@@ -1,0 +1,73 @@
+# ══════════════════════════════════════════════════════════════
+# GraspMind AI — Git Ignore
+# ══════════════════════════════════════════════════════════════
+
+# ── Environment & Secrets ────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ── Python (Backend) ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.egg-info/
+dist/
+build/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ── Node.js (Frontend) ────────────────────────────────────────
+node_modules/
+.next/
+out/
+.vercel/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.tsbuildinfo
+next-env.d.ts
+
+# ── IDE & OS ──────────────────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Docker ───────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Misc ─────────────────────────────────────────────────────
+*.log
+tmp/
+*.extracted.txt
+StudentMind_extracted.txt

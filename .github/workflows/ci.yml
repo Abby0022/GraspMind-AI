@@ -1,0 +1,94 @@
+# ══════════════════════════════════════════════════════════════
+# StudentMind — CI Pipeline
+# Runs on every push/PR: lint, security scan, tests
+# ══════════════════════════════════════════════════════════════
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Backend Checks ─────────────────────────────────────────
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
+      - name: Lint (Ruff)
+        run: uv run ruff check src/
+
+      - name: Format check (Ruff)
+        run: uv run ruff format --check src/
+
+      - name: Security scan (Bandit)
+        run: uv run bandit -r src/ -ll
+
+      - name: Dependency audit
+        run: uv run pip-audit
+
+      - name: Tests
+        run: uv run pytest --tb=short -q
+
+  # ── Frontend Checks ────────────────────────────────────────
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (Biome)
+        run: npx biome check .
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+  # ── Secret Scanning ────────────────────────────────────────
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
