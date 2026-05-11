@@ -26,6 +26,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        # Preflight requests (OPTIONS) should be handled primarily by CORSMiddleware.
+        # Custom security headers are often not required for preflights and can
+        # sometimes cause 400/CORS issues if applied incorrectly.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         response: Response = await call_next(request)
 
         # Content Security Policy
@@ -67,15 +73,17 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 def configure_security(app: FastAPI, settings: Settings) -> None:
     """Apply all security middleware to the FastAPI application."""
 
-    # CORS — strict origin whitelist
+    # 1. Apply custom security headers first (innermost middleware)
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    # 2. Apply CORS last (outermost middleware)
+    # This ensures CORSMiddleware can handle OPTIONS requests immediately
+    # before they hit any other logic or custom middleware.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_methods=["*"],  # Allow all standard methods
+        allow_headers=["*"],  # Allow all headers to prevent 400 on custom headers
         max_age=600,  # Cache preflight for 10 minutes
     )
-
-    # Security headers
-    app.add_middleware(SecurityHeadersMiddleware)
