@@ -7,7 +7,7 @@ designed for FastAPI/asyncio applications.
 import logging
 import traceback
 
-from taskiq import TaskExecutionResult, TaskiqMessage, TaskiqMiddleware
+from taskiq import TaskiqMessage, TaskiqMiddleware, TaskiqResult
 from taskiq_redis import ListQueueBroker, RedisAsyncResultBackend
 
 from graspmind.config import get_settings
@@ -19,7 +19,7 @@ settings = get_settings()
 class DeadLetterQueueMiddleware(TaskiqMiddleware):
     """Middleware to catch failed tasks and push them to a Dead Letter Queue (DLQ)."""
 
-    async def post_execute(self, message: TaskiqMessage, result: TaskExecutionResult) -> None:
+    async def post_execute(self, message: TaskiqMessage, result: TaskiqResult) -> None:
         """Called after a task finishes executing. If it fails, send to DLQ."""
         if result.is_err:
             logger.error(

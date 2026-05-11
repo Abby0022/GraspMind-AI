@@ -149,7 +149,7 @@ def search_vectors(
         List of dicts with id, score, and payload for each match.
     """
     client = get_qdrant_client(settings)
-    collection = _collection_name(user_id)
+    collection = ensure_collection(user_id, settings)
 
     # Build filter conditions
     must_conditions = []
@@ -196,7 +196,7 @@ def get_parent_chunk(
     relevant child chunks, expand to their parent for the LLM prompt.
     """
     client = get_qdrant_client(settings)
-    collection = _collection_name(user_id)
+    collection = ensure_collection(user_id, settings)
 
     try:
         results = client.retrieve(
@@ -225,7 +225,7 @@ def delete_source_vectors(
     Called when a source is deleted to clean up its embeddings.
     """
     client = get_qdrant_client(settings)
-    collection = _collection_name(user_id)
+    collection = ensure_collection(user_id, settings)
 
     client.delete(
         collection_name=collection,

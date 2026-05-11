@@ -213,24 +213,38 @@ export function NotebookClient({
   useEffect(() => {
     loadSources();
     const channel = supabase
-      .channel(`sources:${notebook.id}`)
+      .channel(`sources_realtime:${notebook.id}`)
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*", // Listen for ALL changes (INSERT, UPDATE, DELETE)
           schema: "public",
           table: "sources",
           filter: `notebook_id=eq.${notebook.id}`,
         },
         (payload) => {
-          setSources((prev) =>
-            prev.map((s) =>
-              s.id === payload.new.id ? { ...s, ...payload.new } : s,
-            ),
-          );
+          if (payload.eventType === "UPDATE") {
+            setSources((prev) =>
+              prev.map((s) =>
+                s.id === payload.new.id ? { ...s, ...payload.new } : s,
+              ),
+            );
+          } else if (payload.eventType === "INSERT") {
+            setSources((prev) => {
+              // Avoid duplicate inserts if handleUpload already added it
+              if (prev.some((s) => s.id === payload.new.id)) return prev;
+              return [payload.new as Source, ...prev];
+            });
+          } else if (payload.eventType === "DELETE") {
+            setSources((prev) => prev.filter((s) => s.id !== payload.old.id));
+          }
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("Realtime subscription active for notebook:", notebook.id);
+        }
+      });
 
     // Listen for notebook updates (like mastery_score)
     const nbChannel = supabase

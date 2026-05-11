@@ -107,7 +107,7 @@ async def update_knowledge(
         )
 
     # Embed concepts
-    embeddings = await embed_texts(concepts, task_type="RETRIEVAL_DOCUMENT")
+    embeddings = await embed_texts(concepts, task="RETRIEVAL_DOCUMENT")
 
     nodes: list[KnowledgeNode] = []
     points: list[PointStruct] = []
@@ -180,6 +180,11 @@ async def get_weak_areas(
     collection_name = f"knowledge_{user_id[:8]}"
 
     try:
+        # Ensure collection exists before scrolling
+        collections = (await client.get_collections()).collections
+        if not any(c.name == collection_name for c in collections):
+            return []
+
         scroll_result = await client.scroll(
             collection_name=collection_name,
             scroll_filter={
@@ -229,6 +234,11 @@ async def get_cross_links(
     collection_name = f"knowledge_{user_id[:8]}"
 
     try:
+        # Ensure collection exists before scrolling
+        collections = (await client.get_collections()).collections
+        if not any(c.name == collection_name for c in collections):
+            return []
+
         # 1. Get concepts in current notebook
         current_scroll = await client.scroll(
             collection_name=collection_name,
