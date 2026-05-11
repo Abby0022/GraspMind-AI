@@ -1,0 +1,53 @@
+services:
+  # ── Backend API (FastAPI) ──────────────────────────────────
+  - type: web
+    name: graspmind-api
+    env: python
+    buildCommand: "cd backend && uv sync"
+    startCommand: "cd backend && uv run uvicorn graspmind.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - fromGroup: graspmind-secrets
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: graspmind-redis
+          property: connectionString
+
+  # ── Background Worker (Taskiq) ─────────────────────────────
+  - type: worker
+    name: graspmind-worker
+    env: python
+    buildCommand: "cd backend && uv sync"
+    startCommand: "cd backend && uv run taskiq worker graspmind.workers.broker:broker graspmind.workers.ingestion graspmind.workers.episodic_worker graspmind.workers.feynman_worker"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.0
+      - fromGroup: graspmind-secrets
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: graspmind-redis
+          property: connectionString
+
+# ── Redis Instance ───────────────────────────────────────────
+- type: redis
+  name: graspmind-redis
+  plan: free # Change to starter for production persistence
+  ipAllowList: [] # Only allow internal connections
+
+# ── Shared Secrets Group ─────────────────────────────────────
+envVarGroups:
+  - name: graspmind-secrets
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
