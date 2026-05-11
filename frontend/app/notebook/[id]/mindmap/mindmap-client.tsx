@@ -28,7 +28,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 
-// ── Types ────────────────────────────────────────────────────
+// -- Types ----------------------------------------------------
 interface RawNode {
   id: string;
   label: string;
@@ -45,7 +45,7 @@ interface MapData {
   edges: RawEdge[];
 }
 
-// ── Colour scheme by group ───────────────────────────────────
+// -- Colour scheme by group ----------------------------------─
 const GROUP_STYLES: Record<
   string,
   { bg: string; border: string; text: string; size: number }
@@ -55,7 +55,7 @@ const GROUP_STYLES: Record<
   detail: { bg: "#f3f4f6", border: "#d1d5db", text: "#374151", size: 36 },
 };
 
-// ── Dagre auto-layout ────────────────────────────────────────
+// -- Dagre auto-layout ----------------------------------------
 const NODE_WIDTH = 180;
 const NODE_HEIGHT = 60;
 
@@ -83,7 +83,7 @@ function applyDagreLayout(nodes: Node[], edges: Edge[]): Node[] {
   });
 }
 
-// ── Transform API response → ReactFlow nodes/edges ───────────
+// -- Transform API response → ReactFlow nodes/edges ----------─
 function buildReactFlowData(data: MapData): { nodes: Node[]; edges: Edge[] } {
   const rfNodes: Node[] = data.nodes.map((n) => {
     const style = GROUP_STYLES[n.group] ?? GROUP_STYLES.detail;
@@ -131,7 +131,7 @@ function buildReactFlowData(data: MapData): { nodes: Node[]; edges: Edge[] } {
   return { nodes: laid, edges: rfEdges };
 }
 
-// ── Main Component ───────────────────────────────────────────
+// -- Main Component ------------------------------------------─
 export function MindMapClient({
   notebookId,
   isEmbedded,
@@ -217,7 +217,7 @@ export function MindMapClient({
     <div
       className={`flex flex-col ${isEmbedded ? "h-full w-full" : "h-screen bg-background"}`}
     >
-      {/* ── Header ── */}
+      {/* -- Header -- */}
       {!isEmbedded && (
         <div className="px-4 pt-5 pb-3 shrink-0">
           <header className="h-14 flex items-center justify-between px-5 bg-card rounded-full shadow-sm border border-border max-w-5xl mx-auto">
@@ -267,7 +267,7 @@ export function MindMapClient({
         </div>
       )}
 
-      {/* ── Body ── */}
+      {/* -- Body -- */}
       <div
         className={`flex-1 overflow-hidden ${isEmbedded ? "" : "px-4 pb-4"}`}
       >

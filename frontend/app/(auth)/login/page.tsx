@@ -10,7 +10,7 @@ import { api } from "@/lib/api";
 import { useAuthStore } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 
-/* ── OAuth provider icons (SVG inline) ───────────────────── */
+/* -- OAuth provider icons (SVG inline) --------------------─ */
 function GoogleIcon() {
   return (
     <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
@@ -48,7 +48,7 @@ function XIcon() {
   );
 }
 
-/* ── Decorative right panel mockup ───────────────────────── */
+/* -- Decorative right panel mockup ------------------------─ */
 function DashboardMockup() {
   const items = [
     { initials: "EM", name: "Emily Morrison", email: "emily@uni.edu" },
@@ -160,7 +160,7 @@ function DashboardMockup() {
   );
 }
 
-/* ── Main Login Page ─────────────────────────────────────── */
+/* -- Main Login Page --------------------------------------─ */
 export default function LoginPage() {
   const router = useRouter();
   const { setUser } = useAuthStore();
@@ -224,7 +224,7 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#f0f1f3] flex items-center justify-center p-4">
       <div className="w-full max-w-5xl bg-white rounded-3xl shadow-sm border border-[#e5e5e5] overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[580px]">
-          {/* ── Left: Form ─────────────────────────────── */}
+          {/* -- Left: Form ------------------------------─ */}
           <div className="flex flex-col p-8 lg:p-12">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mb-auto">
@@ -341,7 +341,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* ── Right: Decorative mockup ────────────────── */}
+          {/* -- Right: Decorative mockup ------------------ */}
           <div className="hidden lg:flex items-center justify-center p-8 bg-[#f8f8f8] border-l border-[#eee]">
             <DashboardMockup />
           </div>

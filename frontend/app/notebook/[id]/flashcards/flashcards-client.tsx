@@ -193,7 +193,7 @@ export function FlashcardsClient({
       <main
         className={`flex-1 w-full max-w-3xl px-4 py-8 flex flex-col ${isEmbedded ? "overflow-y-auto" : ""}`}
       >
-        {/* ── Generate Phase ──────────────────────────────────────────────────────────── */}
+        {/* -- Generate Phase ------------------------------------------------------------ */}
         {phase === "generate" && (
           <div className="flex-1 flex flex-col items-center justify-center space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center space-y-3">
@@ -260,7 +260,7 @@ export function FlashcardsClient({
           </div>
         )}
 
-        {/* ── Review Phase ────────────────────────────────────────────────────────────── */}
+        {/* -- Review Phase -------------------------------------------------------------- */}
         {phase === "review" && currentCard && (
           <div className="flex-1 flex flex-col items-center justify-center w-full max-w-2xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-300">
             {/* Progress bar */}
@@ -400,7 +400,7 @@ export function FlashcardsClient({
           </div>
         )}
 
-        {/* ── Complete Phase ──────────────────────────────────────────────────────────── */}
+        {/* -- Complete Phase ------------------------------------------------------------ */}
         {phase === "complete" && deck && (
           <div className="flex-1 flex flex-col items-center justify-center space-y-10 animate-in fade-in zoom-in-95 duration-500">
             <div className="text-center space-y-4">

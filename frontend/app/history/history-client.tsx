@@ -110,7 +110,7 @@ export function HistoryClient({
 
       <main className={`max-w-6xl mx-auto w-full px-5 ${isEmbedded ? "flex-1 overflow-y-auto py-6" : "py-10 space-y-8"}`}>
         
-        {/* ── Top Stats Grid ── */}
+        {/* -- Top Stats Grid -- */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {[
@@ -130,7 +130,7 @@ export function HistoryClient({
 
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-8 items-start">
           
-          {/* ── Sidebar: Topics ── */}
+          {/* -- Sidebar: Topics -- */}
           {stats && stats.top_topics.length > 0 && (
             <div className="bg-card border border-border rounded-2xl p-5 shadow-sm sticky top-20">
               <div className="flex items-center gap-2 mb-4">
@@ -153,7 +153,7 @@ export function HistoryClient({
             </div>
           )}
 
-          {/* ── Main Timeline ── */}
+          {/* -- Main Timeline -- */}
           <div className="flex-1">
             {isLoading ? (
               <div className="flex items-center justify-center py-20">

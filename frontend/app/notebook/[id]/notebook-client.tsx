@@ -363,7 +363,7 @@ export function NotebookClient({
 
   return (
     <div className="h-screen flex flex-col bg-background p-3 gap-3 overflow-hidden">
-      {/* ── Floating Top Header ────────────────────────────────────────── */}
+      {/* -- Floating Top Header ------------------------------------------ */}
       <header className="h-12 flex items-center justify-between px-1 sm:px-2 shrink-0">
         <div className="flex items-center gap-2 sm:gap-3">
           <button
@@ -449,7 +449,7 @@ export function NotebookClient({
         </div>
       </header>
 
-      {/* ── Main Workspace Area ───────────────────────────────── */}
+      {/* -- Main Workspace Area --------------------------------─ */}
       <div className="flex-1 flex gap-3 overflow-hidden relative">
         {/* Mobile Scrim */}
         {(leftOpen || rightOpen) && (
@@ -462,7 +462,7 @@ export function NotebookClient({
           />
         )}
 
-        {/* ── LEFT: Sources Sidebar ──────────────────────────────────── */}
+        {/* -- LEFT: Sources Sidebar ------------------------------------ */}
         <aside
           className={`bg-card rounded-[24px] border border-border flex flex-col overflow-hidden transition-all duration-300 ease-in-out shrink-0 
           ${leftOpen ? "absolute md:relative z-20 h-full w-[85%] max-w-[320px] sm:w-72 shadow-2xl md:shadow-sm left-0 top-0" : "hidden md:flex w-16 items-center"}`}
@@ -751,7 +751,7 @@ export function NotebookClient({
           </div>
         </div>
 
-        {/* ── RIGHT: Studio Sidebar ──────────────────────────────────── */}
+        {/* -- RIGHT: Studio Sidebar ------------------------------------ */}
         <aside
           className={`bg-card rounded-[24px] border border-border flex flex-col overflow-hidden transition-all duration-300 ease-in-out shrink-0 
           ${rightOpen ? "absolute md:relative z-20 h-full w-[85%] max-w-[320px] sm:w-72 shadow-2xl md:shadow-sm right-0 top-0" : "hidden md:flex w-16 items-center"}`}

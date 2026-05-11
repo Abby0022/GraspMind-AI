@@ -227,7 +227,7 @@ export default function SignupPage() {
     <div className="min-h-screen bg-[#f0f1f3] flex items-center justify-center p-4">
       <div className="w-full max-w-5xl bg-white rounded-3xl shadow-sm border border-[#e5e5e5] overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-2 min-h-[620px]">
-          {/* ── Left: Form ─────────────────────────────── */}
+          {/* -- Left: Form ------------------------------─ */}
           <div className="flex flex-col p-8 lg:p-12">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mb-auto">
@@ -461,7 +461,7 @@ export default function SignupPage() {
             </p>
           </div>
 
-          {/* ── Right: Decorative mockup ────────────────── */}
+          {/* -- Right: Decorative mockup ------------------ */}
           <div className="hidden lg:flex items-center justify-center p-8 bg-[#f8f8f8] border-l border-[#eee]">
             <DashboardMockup />
           </div>

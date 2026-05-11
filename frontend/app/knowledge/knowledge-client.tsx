@@ -172,7 +172,7 @@ export function KnowledgeClient({
           </div>
         ) : (
           <>
-            {/* ── Top Grid: Mastery Distribution ── */}
+            {/* -- Top Grid: Mastery Distribution -- */}
             <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-5">
                 <div className="flex items-center gap-2">
@@ -229,7 +229,7 @@ export function KnowledgeClient({
               </div>
             </div>
 
-            {/* ── Mid Section: Insights & Recommendations ── */}
+            {/* -- Mid Section: Insights & Recommendations -- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               
               {/* Recommendations */}
@@ -291,7 +291,7 @@ export function KnowledgeClient({
               )}
             </div>
 
-            {/* ── Concepts Grid ── */}
+            {/* -- Concepts Grid -- */}
             <div>
               <div className="flex items-center justify-between mb-5">
                 <h3 className="text-lg font-bold text-foreground tracking-tight">

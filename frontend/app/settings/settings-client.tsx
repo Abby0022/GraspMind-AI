@@ -219,7 +219,7 @@ export function SettingsClient({ user }: { user: User }) {
       <NavBar user={user} onLogout={handleLogout} />
 
       <main className="max-w-6xl mx-auto px-5 pt-24 pb-16">
-        {/* ── Header ── */}
+        {/* -- Header -- */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight">
@@ -233,7 +233,7 @@ export function SettingsClient({ user }: { user: User }) {
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-8 items-start">
           
-          {/* ── LEFT: Providers ── */}
+          {/* -- LEFT: Providers -- */}
           <div className="space-y-10">
             
             {/* Active Providers */}
@@ -348,7 +348,7 @@ export function SettingsClient({ user }: { user: User }) {
             </section>
           </div>
 
-          {/* ── RIGHT: Sidebar ── */}
+          {/* -- RIGHT: Sidebar -- */}
           <div className="space-y-4">
             <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
@@ -393,7 +393,7 @@ export function SettingsClient({ user }: { user: User }) {
         </div>
       </main>
 
-      {/* ── Configure Dialog ────────────────────────────── */}
+      {/* -- Configure Dialog ------------------------------ */}
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent className="sm:max-w-[420px] rounded-[24px] p-0 overflow-hidden border-border/50 shadow-2xl bg-card">
           <div className="px-6 pt-6 pb-4">

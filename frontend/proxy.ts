@@ -15,7 +15,7 @@ export async function proxy(request: NextRequest) {
     request: { headers: request.headers },
   });
 
-  // ── Security Headers ────────────────────────────────────
+  // -- Security Headers ------------------------------------
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
@@ -24,7 +24,7 @@ export async function proxy(request: NextRequest) {
     "camera=(), microphone=(), geolocation=(), payment=()",
   );
 
-  // ── Supabase Auth Session Refresh ───────────────────────
+  // -- Supabase Auth Session Refresh ----------------------─
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 

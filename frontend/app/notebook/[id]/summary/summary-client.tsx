@@ -150,7 +150,7 @@ export function SummaryClient({
       <main
         className={`flex-1 w-full max-w-3xl px-4 py-8 flex flex-col ${isEmbedded ? "overflow-y-auto" : ""}`}
       >
-        {/* ── Generate Phase ── */}
+        {/* -- Generate Phase -- */}
         {phase === "generate" && (
           <div className="flex-1 flex flex-col items-center justify-center space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="text-center space-y-3">
@@ -186,7 +186,7 @@ export function SummaryClient({
           </div>
         )}
 
-        {/* ── View Phase ── */}
+        {/* -- View Phase -- */}
         {phase === "view" && summary && (
           <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Overview */}

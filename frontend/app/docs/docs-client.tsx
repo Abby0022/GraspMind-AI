@@ -36,7 +36,7 @@ function Endpoint({ method, path, desc, auth = true }: { method: string; path: s
   );
 }
 
-// ── Sections Content ─────────────────────────────────────────────
+// -- Sections Content --------------------------------------------─
 
 function OverviewSection() {
   return (
@@ -207,7 +207,7 @@ function RagSection() {
   );
 }
 
-// ── Main Layout ────────────────────────────────────────────────
+// -- Main Layout ------------------------------------------------
 
 function AuthSection() {
   return (
@@ -436,7 +436,7 @@ export function DocsClient() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* ── Top Navigation ── */}
+      {/* -- Top Navigation -- */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-8">
           <div className="flex items-center gap-4">
@@ -461,7 +461,7 @@ export function DocsClient() {
         </div>
       </header>
 
-      {/* ── Main Layout Grid ── */}
+      {/* -- Main Layout Grid -- */}
       <div className="flex-1 w-full max-w-[1440px] mx-auto px-4 sm:px-6 py-6 lg:py-10 flex flex-col lg:flex-row items-start gap-8 lg:gap-12">
         
         {/* Left Sidebar (Main Nav) */}

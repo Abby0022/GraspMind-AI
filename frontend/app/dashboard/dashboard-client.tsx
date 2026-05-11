@@ -162,7 +162,7 @@ export function DashboardClient({ user }: { user: User }) {
 
       <main className="w-full max-w-6xl mx-auto px-5 pt-24 pb-16">
         
-        {/* ── Top Bar: Greeting & Actions ── */}
+        {/* -- Top Bar: Greeting & Actions -- */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold text-foreground tracking-tight">
@@ -181,7 +181,7 @@ export function DashboardClient({ user }: { user: User }) {
           </button>
         </div>
 
-        {/* ── Bento Grid: Widgets ── */}
+        {/* -- Bento Grid: Widgets -- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
           
           {/* Widget 1: Stats */}
@@ -275,7 +275,7 @@ export function DashboardClient({ user }: { user: User }) {
 
         </div>
 
-        {/* ── Main Content: Notebooks ── */}
+        {/* -- Main Content: Notebooks -- */}
         <div>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-bold text-foreground tracking-tight">Your Notebooks</h2>
@@ -376,7 +376,7 @@ export function DashboardClient({ user }: { user: User }) {
         </div>
       </main>
 
-      {/* ── Create Dialog ── */}
+      {/* -- Create Dialog -- */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="sm:max-w-[420px] rounded-[24px] p-0 overflow-hidden border-border/50 shadow-2xl bg-card">
           <div className="px-6 pt-6 pb-4">

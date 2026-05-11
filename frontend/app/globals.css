@@ -42,7 +42,7 @@
   --radius-3xl: 2rem;
 }
 
-/* ── Light theme — matches the reference design ─────────── */
+/* -- Light theme — matches the reference design ----------─ */
 :root {
   --background: #f0f1f3;
   --foreground: #111111;

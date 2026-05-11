@@ -172,7 +172,7 @@ export default function ClassDetailPage() {
           ))}
         </div>
 
-        {/* ── Tab: Overview ── */}
+        {/* -- Tab: Overview -- */}
         {activeTab === "overview" && cls && (
           <div className="space-y-6 max-w-lg">
             <div className="rounded-2xl border border-border/50 bg-card/60 p-6 space-y-4">
@@ -214,12 +214,12 @@ export default function ClassDetailPage() {
           </div>
         )}
 
-        {/* ── Tab: Members ── */}
+        {/* -- Tab: Members -- */}
         {activeTab === "members" && (
           <MembersTable members={members} onRemove={removeStudent} />
         )}
 
-        {/* ── Tab: Assignments ── */}
+        {/* -- Tab: Assignments -- */}
         {activeTab === "assignments" && (
           <div className="space-y-4">
             <div className="flex justify-end">
@@ -276,7 +276,7 @@ export default function ClassDetailPage() {
           </div>
         )}
 
-        {/* ── Tab: Analytics ── */}
+        {/* -- Tab: Analytics -- */}
         {activeTab === "analytics" && (
           analytics ? (
             <AnalyticsChart analytics={analytics} />
