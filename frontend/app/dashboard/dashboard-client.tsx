@@ -286,7 +286,7 @@ export function DashboardClient({ user }: { user: User }) {
                 placeholder="Search notebooks..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 rounded-full border border-border bg-card text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-sm"
+                className="w-full h-10 pl-10 pr-5 rounded-full border border-border bg-secondary/30 text-sm text-foreground placeholder:text-muted-foreground/60 outline-none hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
               />
             </div>
           </div>
@@ -402,7 +402,7 @@ export function DashboardClient({ user }: { user: User }) {
                   onChange={(e) => setNewTitle(e.target.value)}
                   required
                   autoFocus
-                  className="h-11 rounded-xl text-[13px] bg-secondary/50 border-transparent hover:border-border/50 focus:bg-background focus:border-primary/50 focus:ring-2 focus:ring-primary/20 shadow-none transition-all"
+                  className="h-11 rounded-full text-[13px] bg-secondary/30 border border-border hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 shadow-none transition-all outline-none"
                 />
               </div>
               <div className="space-y-1.5">
@@ -413,7 +413,7 @@ export function DashboardClient({ user }: { user: User }) {
                   placeholder="e.g. Psychology"
                   value={newSubject}
                   onChange={(e) => setNewSubject(e.target.value)}
-                  className="h-11 rounded-xl text-[13px] bg-secondary/50 border-transparent hover:border-border/50 focus:bg-background focus:border-primary/50 focus:ring-2 focus:ring-primary/20 shadow-none transition-all"
+                  className="h-11 rounded-full text-[13px] bg-secondary/30 border border-border hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 shadow-none transition-all outline-none"
                 />
               </div>
             </div>

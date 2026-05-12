@@ -281,13 +281,12 @@ async def get_source(
         .select("*")
         .eq("id", source_id)
         .eq("notebook_id", notebook_id)
-        .single()
         .execute()
     )
 
     if not result.data:
         raise HTTPException(status_code=404, detail="Source not found")
-    return result.data
+    return result.data[0]
 
 
 @router.delete("/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -306,7 +305,6 @@ async def delete_source(
         .select("file_path")
         .eq("id", source_id)
         .eq("notebook_id", notebook_id)
-        .single()
         .execute()
     )
 
@@ -314,7 +312,7 @@ async def delete_source(
         raise HTTPException(status_code=404, detail="Source not found")
 
     # Delete from storage
-    file_path = source_result.data.get("file_path")
+    file_path = source_result.data[0].get("file_path")
     if file_path:
         try:
             await supabase.storage.from_("sources").remove([file_path])

@@ -14,7 +14,35 @@ from graspmind.memory.working import (
 )
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
+ 
+ 
+@router.get("/notebook/{notebook_id}/latest")
+async def get_latest_session(
+    notebook_id: str,
+    user: AuthUser,
+    supabase=Depends(get_user_supabase),
+):
+    """Get the most recent chat session and its messages for a notebook."""
+    # Get the latest session for this notebook
+    session_result = await supabase.table("chat_sessions").select("*").eq(
+        "notebook_id", notebook_id
+    ).eq("user_id", user.id).order("created_at", desc=True).limit(1).execute()
 
+    if not session_result.data:
+        return {"session": None, "messages": []}
+
+    session = session_result.data[0]
+    session_id = session["id"]
+
+    # Get all messages for this session
+    messages_result = await supabase.table("messages").select("*").eq(
+        "session_id", session_id
+    ).order("created_at").execute()
+
+    return {
+        "session": session,
+        "messages": messages_result.data or [],
+    }
 
 @router.post("/")
 async def create_chat_session(

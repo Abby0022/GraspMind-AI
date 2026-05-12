@@ -154,6 +154,7 @@ export default function SignupPage() {
   const [agreed, setAgreed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<string | null>(null);
+  const [verificationRequired, setVerificationRequired] = useState(false);
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -174,19 +175,30 @@ export default function SignupPage() {
       // All signups go through our backend so that:
       // - teacher_code is validated server-side (cannot be bypassed)
       // - role is assigned by the backend, never by user input
-      // - cookies are set automatically (user is logged in immediately)
-      const result = await api.auth.signup({
+      // - cookies are set automatically (user is logged in immediately if verification is off)
+      const result = (await api.auth.signup({
         name,
         email,
         password,
         ...(role === "teacher" ? { teacher_code: teacherCode.trim() } : {}),
-      }) as { user: { role: string; name: string; email: string; id: string } };
+      })) as {
+        user?: { role: string; name: string; email: string; id: string };
+        verification_required?: boolean;
+      };
+
+      if (result.verification_required) {
+        setVerificationRequired(true);
+        toast.success("Account created! Please check your email to verify your account.");
+        return;
+      }
 
       // Also sign in via Supabase browser client to set the Next.js SSR cookies
       const supabase = createClient();
       await supabase.auth.signInWithPassword({ email, password });
 
-      setUser(result.user as Parameters<typeof setUser>[0]);
+      if (result.user) {
+        setUser(result.user as Parameters<typeof setUser>[0]);
+      }
       toast.success(
         role === "teacher"
           ? "Teacher account created! Welcome to GraspMind AI."
@@ -242,14 +254,35 @@ export default function SignupPage() {
 
             {/* Form */}
             <div className="py-8">
-              <h1 className="text-2xl font-bold text-[#111] mb-1">
-                Create account
-              </h1>
-              <p className="text-sm text-[#888] mb-6">
-                Enter your Email and Password to create your account.
-              </p>
+              {verificationRequired ? (
+                <div className="text-center space-y-6 py-12">
+                  <div className="w-16 h-16 bg-[#f4f4f5] rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <Mail className="w-8 h-8 text-[#111]" />
+                  </div>
+                  <h1 className="text-2xl font-bold text-[#111]">Check your email</h1>
+                  <p className="text-sm text-[#888] max-w-sm mx-auto leading-relaxed">
+                    We've sent a verification link to <span className="font-semibold text-[#111]">{email}</span>.
+                    Please click the link in the email to activate your account.
+                  </p>
+                  <div className="pt-8">
+                    <Link
+                      href="/login"
+                      className="inline-flex items-center justify-center h-10 px-8 bg-[#111] text-white text-sm font-medium rounded-xl hover:bg-[#222] transition-colors"
+                    >
+                      Back to login
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <h1 className="text-2xl font-bold text-[#111] mb-1">
+                    Create account
+                  </h1>
+                  <p className="text-sm text-[#888] mb-6">
+                    Enter your Email and Password to create your account.
+                  </p>
 
-              <form onSubmit={handleSignup} className="space-y-4">
+                  <form onSubmit={handleSignup} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-[#555]">
                     Full Name
@@ -353,7 +386,7 @@ export default function SignupPage() {
                         onChange={(e) => setTeacherCode(e.target.value)}
                         required
                         autoComplete="off"
-                        className="pl-9 h-10 rounded-xl border-[#e5e5e5] bg-white text-sm text-[#111] placeholder:text-[#bbb] focus-visible:ring-1 focus-visible:ring-[#111] focus-visible:border-[#111]"
+                        className="pl-10 h-11 rounded-full border border-border bg-secondary/30 text-sm text-[#111] placeholder:text-[#bbb] hover:bg-secondary/50 hover:border-foreground/20 focus-visible:bg-white focus-visible:border-primary/50 focus-visible:ring-4 focus-visible:ring-primary/5 transition-all outline-none"
                       />
                     </div>
                     <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 mt-1">
@@ -406,7 +439,7 @@ export default function SignupPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full h-10 bg-[#111] text-white text-sm font-medium rounded-xl hover:bg-[#222] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                  className="w-full h-11 bg-[#111] text-white text-sm font-semibold rounded-full hover:bg-[#222] active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm"
                 >
                   {isLoading && (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -448,7 +481,9 @@ export default function SignupPage() {
                   </button>
                 ))}
               </div>
-            </div>
+            </>
+          )}
+        </div>
 
             <p className="text-xs text-[#888] text-center mt-auto">
               Already have an account?{" "}

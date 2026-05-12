@@ -57,4 +57,4 @@ broker = ListQueueBroker(
     )
 )
 
-broker.add_middleware(DeadLetterQueueMiddleware())
+broker.add_middlewares(DeadLetterQueueMiddleware())

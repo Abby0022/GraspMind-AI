@@ -62,8 +62,8 @@ async def rerank(
     try:
         scores = await _rerank_ollama(query, results, s)
     except Exception as exc:
-        logger.warning("Reranker failed, falling back to fusion scores: %s", exc)
-        # Fallback: use original fusion scores
+        # Silently fall back to fusion scores to avoid log noise if Ollama isn't running
+        logger.debug("Reranker unreachable (Ollama down), using fusion scores: %s", exc)
         scores = [r.score for r in results]
 
     # Combine results with reranker scores

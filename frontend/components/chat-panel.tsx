@@ -13,7 +13,7 @@ import {
   TriangleAlert,
   User,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
@@ -70,12 +70,64 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText]);
 
+  // Helper to parse and render citations in text
+  const renderCitations = (children: any): any => {
+    if (typeof children === "string") {
+      const citationRegex = /\[Source:\s*"([^"]+)"(?:,\s*Page\s*(\d+))?\]/g;
+      const parts = [];
+      let lastIndex = 0;
+      let match;
+
+      while ((match = citationRegex.exec(children)) !== null) {
+        if (match.index > lastIndex) {
+          parts.push(children.substring(lastIndex, match.index));
+        }
+
+        const title = match[1];
+        const page = match[2];
+
+        parts.push(
+          <span
+            key={`inline-${title}-${match.index}`}
+            className="inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary/80 cursor-default select-none align-baseline whitespace-nowrap shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-primary/20 transition-colors"
+            title={title}
+          >
+            <FileText className="w-2.5 h-2.5 opacity-70" />
+            <span className="max-w-[100px] truncate">{title}</span>
+            {page && (
+              <>
+                <span className="w-px h-2.5 bg-primary/20 mx-0.5" />
+                <span className="opacity-60 font-medium">p.{page}</span>
+              </>
+            )}
+          </span>
+        );
+
+        lastIndex = citationRegex.lastIndex;
+      }
+
+      if (lastIndex < children.length) {
+        parts.push(children.substring(lastIndex));
+      }
+
+      return parts.length > 0 ? parts : children;
+    }
+
+    if (Array.isArray(children)) {
+      return children.map((child, i) => (
+        <React.Fragment key={i}>{renderCitations(child)}</React.Fragment>
+      ));
+    }
+
+    return children;
+  };
+
   // Connect WebSocket
   const connect = useCallback(async () => {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const apiHost =
       process.env.NEXT_PUBLIC_API_URL?.replace(/^https?:\/\//, "") ||
-      "localhost:8000";
+      "127.0.0.1:8000";
 
     // Get auth token — WebSockets can't send custom headers, so pass as query param
     const supabaseClient = createClient();
@@ -176,14 +228,50 @@ export function ChatPanel({
     wsRef.current = ws;
   }, []);
 
+  // Load history and connect WebSocket
   useEffect(() => {
+    let isMounted = true;
+
+    async function loadHistory() {
+      try {
+        const supabaseClient = createClient();
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (!session || !isMounted) return;
+
+        console.log("Fetching chat history from relative path: /api/v1/sessions/notebook/${notebookId}/latest");
+        const res = await fetch(`/api/v1/sessions/notebook/${notebookId}/latest`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (data.session) {
+            setSessionId(data.session.id);
+            if (data.messages && data.messages.length > 0) {
+              setMessages(data.messages.map((m: any) => ({
+                id: m.id,
+                role: m.role,
+                content: m.content,
+                citations: m.citations || [],
+              })));
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+      }
+    }
+
     if (hasSourcesReady) {
+      loadHistory();
       connect();
     }
+
     return () => {
+      isMounted = false;
       wsRef.current?.close();
     };
-  }, [hasSourcesReady, connect]);
+  }, [notebookId, hasSourcesReady, connect]);
 
   useEffect(() => {
     const SpeechRecognition =
@@ -403,6 +491,9 @@ export function ChatPanel({
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     components={{
+                      p: ({ children }) => (
+                        <p className="mb-2 last:mb-0">{renderCitations(children)}</p>
+                      ),
                       h1: ({ children }) => (
                         <h1 className="text-base font-bold mt-3 mb-1.5 first:mt-0">
                           {children}
@@ -418,9 +509,6 @@ export function ChatPanel({
                           {children}
                         </h3>
                       ),
-                      p: ({ children }) => (
-                        <p className="mb-2 last:mb-0">{children}</p>
-                      ),
                       ul: ({ children }) => (
                         <ul className="mb-2 ml-3 space-y-0.5 list-none">
                           {children}
@@ -432,9 +520,9 @@ export function ChatPanel({
                         </ol>
                       ),
                       li: ({ children }) => (
-                        <li className="flex gap-1.5">
-                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                          <span>{children}</span>
+                        <li className="flex gap-1.5 mb-1 last:mb-0">
+                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />
+                          <span>{renderCitations(children)}</span>
                         </li>
                       ),
                       strong: ({ children }) => (
@@ -481,11 +569,16 @@ export function ChatPanel({
                   {msg.citations.map((c, i) => (
                     <span
                       key={`${c.source_title}-${i}`}
-                      className="inline-flex items-center gap-1 text-[10px] text-muted-foreground bg-card border border-border rounded-md px-1.5 py-0.5"
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary/80 cursor-default select-none shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-primary/20 transition-colors"
                     >
-                      <FileText className="w-2.5 h-2.5" />
-                      {c.source_title}
-                      {c.page_num && ` p.${c.page_num}`}
+                      <FileText className="w-2.5 h-2.5 opacity-70" />
+                      <span className="truncate max-w-[120px]">{c.source_title}</span>
+                      {c.page_num && (
+                        <>
+                          <span className="w-px h-2.5 bg-primary/20 mx-0.5" />
+                          <span className="opacity-60 font-medium">p.{c.page_num}</span>
+                        </>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -572,12 +665,12 @@ export function ChatPanel({
           {/* Input Area */}
           <form
             onSubmit={handleSend}
-            className={`relative flex items-center bg-card shadow-[0_2px_12px_rgba(0,0,0,0.04)] border rounded-[24px] p-1.5 transition-all duration-300 focus-within:shadow-[0_4px_20px_rgba(0,0,0,0.08)] ${
+            className={`relative flex items-center bg-card shadow-[0_2px_12px_rgba(0,0,0,0.04)] border rounded-full p-1 transition-all duration-500 focus-within:shadow-[0_8px_30px_rgba(0,0,0,0.08)] ${
               chatMode === "feynman"
-                ? "border-[#a855f7] focus-within:border-[#9333ea]"
+                ? "border-[#a855f7]/30 focus-within:border-[#9333ea]"
                 : isInterrogating
-                  ? "border-[#fca5a5] focus-within:border-[#ef4444]"
-                  : "border-border focus-within:border-[#1a73e8]"
+                  ? "border-[#fca5a5]/30 focus-within:border-[#ef4444]"
+                  : "border-border/50 focus-within:border-[#2563eb]"
             }`}
           >
             <Input
@@ -594,7 +687,7 @@ export function ChatPanel({
                   : "Connecting..."
               }
               disabled={!isConnected || isLoading}
-              className={`flex-1 border-0 shadow-none focus-visible:ring-0 text-sm h-12 px-4 placeholder:text-muted-foreground ${
+              className={`flex-1 border-0 shadow-none focus-visible:ring-0 text-sm h-12 px-5 placeholder:text-muted-foreground/50 ${
                 chatMode === "feynman"
                   ? "text-[#9333ea] placeholder:text-[#d8b4fe]"
                   : isInterrogating
@@ -603,42 +696,45 @@ export function ChatPanel({
               }`}
               maxLength={5000}
             />
-            <div className="absolute right-[88px] text-[10px] text-muted-foreground/40 font-medium select-none pointer-events-none">
-              {input.length}/5000
+            
+            <div className="flex items-center gap-1.5 pr-2">
+              <div className="text-[10px] text-muted-foreground/30 font-medium select-none px-2 border-r border-border/50">
+                {input.length}/5000
+              </div>
+
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  isListening
+                    ? "bg-red-500/10 text-red-500 animate-pulse"
+                    : "text-muted-foreground/60 hover:text-foreground hover:bg-secondary"
+                }`}
+                title={isListening ? "Stop listening" : "Start speaking"}
+              >
+                <Mic className="w-4 h-4" />
+              </button>
+  
+              <button
+                type="submit"
+                disabled={!input.trim() || !isConnected || isLoading}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shrink-0 ${
+                  !input.trim() || !isConnected || isLoading
+                    ? "bg-muted text-muted-foreground/30 cursor-not-allowed"
+                    : chatMode === "feynman"
+                      ? "bg-[#a855f7] text-white shadow-lg shadow-purple-500/20 hover:bg-[#9333ea] hover:scale-105 active:scale-95"
+                      : isInterrogating
+                        ? "bg-[#ef4444] text-white shadow-lg shadow-red-500/20 hover:bg-[#dc2626] hover:scale-105 active:scale-95"
+                        : "bg-[#2563eb] text-white shadow-lg shadow-blue-500/20 hover:bg-[#1d4ed8] hover:scale-105 active:scale-95"
+                }`}
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 ml-0.5" />
+                )}
+              </button>
             </div>
-
-            <button
-              type="button"
-              onClick={toggleListening}
-              className={`absolute right-12 w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
-                isListening
-                  ? "bg-red-500/10 text-red-500 animate-pulse"
-                  : "text-muted-foreground hover:bg-muted"
-              }`}
-              title={isListening ? "Stop listening" : "Start speaking"}
-            >
-              <Mic className="w-4 h-4" />
-            </button>
-
-            <button
-              type="submit"
-              disabled={!input.trim() || !isConnected || isLoading}
-              className={`w-10 h-10 rounded-[18px] flex items-center justify-center transition-all duration-300 shrink-0 ${
-                !input.trim() || !isConnected || isLoading
-                  ? "bg-muted text-[#dadce0] cursor-not-allowed"
-                  : chatMode === "feynman"
-                    ? "bg-[#a855f7] text-white shadow-[0_2px_8px_rgba(168,85,247,0.3)] hover:bg-[#9333ea] hover:shadow-[0_4px_12px_rgba(168,85,247,0.4)] hover:-translate-y-0.5"
-                    : isInterrogating
-                      ? "bg-[#ef4444] text-white shadow-[0_2px_8px_rgba(239,68,68,0.3)] hover:bg-[#dc2626] hover:shadow-[0_4px_12px_rgba(239,68,68,0.4)] hover:-translate-y-0.5"
-                      : "bg-[#1a73e8] text-white shadow-[0_2px_8px_rgba(26,115,232,0.3)] hover:bg-[#1557b0] hover:shadow-[0_4px_12px_rgba(26,115,232,0.4)] hover:-translate-y-0.5"
-              }`}
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4 ml-0.5" />
-              )}
-            </button>
           </form>
         </div>
       </div>

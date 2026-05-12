@@ -147,13 +147,13 @@ export function ShareModal({ isOpen, onClose, notebookId }: ShareModalProps) {
                     placeholder="classmate@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10 h-11 rounded-2xl border-border bg-card focus:ring-rose-500/20"
+                    className="pl-10 h-11 rounded-full border border-border bg-secondary/30 hover:bg-secondary/50 hover:border-foreground/20 focus-visible:bg-white focus-visible:border-rose-500/50 focus-visible:ring-4 focus-visible:ring-rose-500/5 transition-all outline-none"
                   />
                 </div>
                 <Button
                   onClick={handleShare}
                   disabled={!email || isSharing}
-                  className="h-11 px-6 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all shadow-lg shadow-rose-500/20"
+                  className="h-11 px-6 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-semibold transition-all shadow-lg shadow-rose-500/20 active:scale-[0.98]"
                 >
                   {isSharing ? (
                     <Loader2 className="w-4 h-4 animate-spin" />

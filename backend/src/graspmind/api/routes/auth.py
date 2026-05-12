@@ -104,10 +104,12 @@ async def signup(
         ) from exc
 
     if not result.session or not result.user:
-        # Email confirmation required — account created but not yet active
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Account created — please check your email to confirm before logging in.",
+        # Email confirmation required — account created but not yet active.
+        # We return a 201 Created but with a flag indicating verification is needed.
+        return AuthResponse(
+            access_token=None,
+            user=None,
+            verification_required=True,
         )
 
     # ── Upsert public.users with server-determined role ─────────────────

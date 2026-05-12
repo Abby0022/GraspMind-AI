@@ -194,7 +194,10 @@ async def save_episode(
             return episode
 
     except Exception as exc:
-        logger.error("Failed to save episode: %s", exc)
+        if hasattr(exc, 'code') and exc.code == 'PGRST205':
+            logger.warning("Failed to save episode: table 'episodes' missing.")
+        else:
+            logger.error("Failed to save episode: %s", exc)
 
     return None
 
@@ -251,6 +254,11 @@ async def get_relevant_episodes(
         return episodes
 
     except Exception as exc:
+        # Gracefully handle missing table errors (common if migrations aren't run yet)
+        if hasattr(exc, 'code') and exc.code == 'PGRST205':
+            logger.warning("Episodic memory table 'episodes' missing. Please run migrations.")
+            return []
+            
         logger.error("Failed to get episodes: %s", exc)
         return []
 

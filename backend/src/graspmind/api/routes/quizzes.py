@@ -141,14 +141,13 @@ async def generate_quiz_endpoint(
         "notebook_id": notebook_id,
         "user_id": user.id,
         "title": f"Quiz — {len(questions)} questions",
-        "question_count": len(questions),
         "difficulty": body.difficulty or "mixed",
-    }).select().single().execute()
+    }).execute()
 
     if not quiz_result.data:
         raise HTTPException(status_code=500, detail="Failed to create quiz")
 
-    quiz_id = quiz_result.data["id"]
+    quiz_id = quiz_result.data[0]["id"]
 
     # Insert questions
     question_records = [
@@ -187,7 +186,7 @@ async def list_quizzes(
 ):
     """List all quizzes for a notebook."""
     result = await supabase.table("quizzes").select(
-        "id, title, question_count, difficulty, score, completed_at, created_at"
+        "id, title, difficulty, score, completed_at, created_at"
     ).eq("notebook_id", notebook_id).eq(
         "user_id", user.id
     ).order("created_at", desc=True).execute()
@@ -205,17 +204,19 @@ async def get_quiz(
     """Get a quiz with all questions (answers hidden until submitted)."""
     quiz = await supabase.table("quizzes").select("*").eq(
         "id", quiz_id
-    ).eq("user_id", user.id).single().execute()
+    ).eq("user_id", user.id).execute()
 
     if not quiz.data:
         raise HTTPException(status_code=404, detail="Quiz not found")
+
+    quiz_data = quiz.data[0]
 
     questions = await supabase.table("quiz_questions").select(
         "id, question, question_type, options, difficulty"
     ).eq("quiz_id", quiz_id).execute()
 
     return {
-        **quiz.data,
+        **quiz_data,
         "questions": questions.data or [],
     }
 
@@ -236,7 +237,7 @@ async def submit_quiz(
     # Without this, any authenticated user can submit answers for any quiz (IDOR).
     quiz_ownership = await supabase.table("quizzes").select("id").eq(
         "id", quiz_id
-    ).eq("user_id", user.id).single().execute()
+    ).eq("user_id", user.id).execute()
 
     if not quiz_ownership.data:
         raise HTTPException(status_code=404, detail="Quiz not found")
@@ -306,9 +307,9 @@ async def submit_quiz(
     if score > 0:
         nb_res = await supabase.table("notebooks").select("mastery_score").eq(
             "id", notebook_id
-        ).eq("user_id", user.id).single().execute()
+        ).eq("user_id", user.id).execute()
         if nb_res.data:
-            current_mastery = nb_res.data.get("mastery_score") or 0
+            current_mastery = nb_res.data[0].get("mastery_score") or 0
             points_earned = (score / 100) * 5  # Max 5 points per quiz
             new_mastery = min(100, int(current_mastery + points_earned))
 
@@ -335,12 +336,13 @@ async def get_due_reviews(
     # Fetch notebook for exam_date
     nb = await supabase.table("notebooks").select("id, exam_date").eq(
         "id", notebook_id
-    ).eq("user_id", user.id).single().execute()
+    ).eq("user_id", user.id).execute()
 
     if not nb.data:
         raise HTTPException(status_code=404, detail="Notebook not found")
 
-    exam_date_str = nb.data.get("exam_date")
+    nb_data = nb.data[0]
+    exam_date_str = nb_data.get("exam_date")
     exam_date = datetime.fromisoformat(exam_date_str).replace(tzinfo=UTC) if exam_date_str else None
 
     # Fetch quizzes for this notebook

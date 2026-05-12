@@ -549,58 +549,58 @@ export function NotebookClient({
                     </div>
                   </div>
                 ) : (
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragOver(true);
-                    }}
-                    onDragLeave={() => setIsDragOver(false)}
-                    onDrop={handleDrop}
-                    className="space-y-1 px-2"
-                  >
-                    {sources.map((source) => {
-                      const TypeIcon = TYPE_ICONS[source.type] || FileText;
-                      const statusCfg =
-                        STATUS_CONFIG[source.status] || STATUS_CONFIG.pending;
-                      const StatusIcon = statusCfg.icon;
-                      return (
-                        <div
-                          key={source.id}
-                          className="group flex items-center gap-3 px-3 py-2.5 rounded-[16px] hover:bg-muted transition-colors border border-transparent hover:border-border"
-                        >
-                          <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center shrink-0">
-                            <TypeIcon className="w-4 h-4 text-muted-foreground" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[13px] font-medium text-foreground truncate">
-                              {source.title}
-                            </p>
-                            <div className="flex items-center gap-1.5 mt-0.5">
-                              <StatusIcon
-                                className={`w-3 h-3 ${statusCfg.color} ${source.status === "processing" ? "animate-spin" : ""}`}
-                              />
-                              <span
-                                className={`text-[10px] font-medium ${statusCfg.color}`}
-                              >
-                                {statusCfg.label}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={() =>
-                              handleDelete(
-                                source.id,
-                                (source.metadata?.file_path as string) || null,
-                              )
-                            }
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-full hover:bg-[#e8eaed] transition-all"
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragLeave={() => setIsDragOver(false)}
+                      onDrop={handleDrop}
+                      className="space-y-1.5 px-2"
+                    >
+                      {sources.map((source) => {
+                        const TypeIcon = TYPE_ICONS[source.type] || FileText;
+                        const statusCfg =
+                          STATUS_CONFIG[source.status] || STATUS_CONFIG.pending;
+                        const StatusIcon = statusCfg.icon;
+                        return (
+                          <div
+                            key={source.id}
+                            className="group flex items-center gap-3 px-4 py-3 rounded-full hover:bg-muted transition-all duration-300 border border-transparent hover:border-border hover:shadow-sm"
                           >
-                            <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                            <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center shrink-0 shadow-sm border border-border/50">
+                              <TypeIcon className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[13px] font-semibold text-foreground truncate">
+                                {source.title}
+                              </p>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <StatusIcon
+                                  className={`w-3 h-3 ${statusCfg.color} ${source.status === "processing" ? "animate-spin" : ""}`}
+                                />
+                                <span
+                                  className={`text-[10px] font-bold tracking-wide uppercase ${statusCfg.color} opacity-80`}
+                                >
+                                  {statusCfg.label}
+                                </span>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() =>
+                                handleDelete(
+                                  source.id,
+                                  (source.metadata?.file_path as string) || null,
+                                )
+                              }
+                              className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-full flex items-center justify-center hover:bg-destructive/10 hover:text-destructive transition-all"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
                 )}
               </div>
             </>

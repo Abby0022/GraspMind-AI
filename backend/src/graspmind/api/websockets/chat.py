@@ -119,7 +119,7 @@ async def chat_websocket(
                     query=content,
                     user_id=user_id,
                     notebook_id=notebook_id,
-                    top_k=8,
+                    top_k=12,
                 )
 
                 # Step 2.5: Ensure working memory session exists
@@ -285,20 +285,22 @@ async def _persist_message(
     settings = get_settings()
     supabase = await acreate_client(settings.supabase_url, settings.supabase_service_key)
 
-    # Get or create session
-    if not session_id:
-        result = await supabase.table("chat_sessions").insert({
-            "notebook_id": notebook_id,
-            "user_id": user_id,
-            "message_count": 0,
-        }).execute()
-        if result.data:
-            session_id = result.data[0]["id"]
-        else:
+    # Ensure session exists in Supabase (upsert)
+    if session_id:
+        try:
+            # First, check if session exists to avoid unnecessary upsert if possible,
+            # but upsert is safer if we want to ensure count is updated later.
+            await supabase.table("chat_sessions").upsert({
+                "id": session_id,
+                "notebook_id": notebook_id,
+                "user_id": user_id,
+            }, on_conflict="id").execute()
+        except Exception as exc:
+            logger.warning("Failed to upsert session %s: %s", session_id, exc)
             return
 
     # Insert messages
-    messages = [
+    messages_to_insert = [
         {
             "session_id": session_id,
             "role": "user",
@@ -312,9 +314,9 @@ async def _persist_message(
             "citations": citations,
         },
     ]
-    await supabase.table("messages").insert(messages).execute()
+    await supabase.table("messages").insert(messages_to_insert).execute()
 
     # Update message count
     await supabase.table("chat_sessions").update({
-        "message_count": len(messages),
+        "message_count": len(messages_to_insert),
     }).eq("id", session_id).execute()

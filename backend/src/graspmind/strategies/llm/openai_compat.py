@@ -32,17 +32,29 @@ class OpenAICompatibleStrategy(LLMStrategy):
         self,
         messages: list[dict],
         *,
-        base_url: str,
-        api_key: str,
-        model: str,
+        base_url: str | None,
+        api_key: str | None,
+        model: str | None,
         timeout: float = 60.0,
         auth_header: str = "Authorization",
         auth_prefix: str = "Bearer",
         **kwargs,
     ) -> AsyncGenerator[str]:
-        """Stream SSE response from an OpenAI-compatible endpoint."""
-        url = f"{base_url.rstrip('/')}/chat/completions"
+        """Stream SSE response from an OpenAI-compatible endpoint or native Google API."""
+        # Defensive checks
+        if not base_url: base_url = ""
+        if not model: model = ""
+        if not api_key: api_key = ""
+        
+        # ── SPECIAL CASE: Native Google Gemini REST API ──────────────────
+        if "generativelanguage.googleapis.com" in base_url:
+            logger.debug("Routing to native Gemini strategy for model: %s", model)
+            async for chunk in self._stream_gemini_native(messages, base_url, api_key, model, timeout):
+                yield chunk
+            return
 
+        # ── STANDARD: OpenAI Compatible ──────────────────────────────────
+        url = f"{base_url.rstrip('/')}/chat/completions"
         payload = {
             "model": model,
             "messages": messages,
@@ -50,57 +62,99 @@ class OpenAICompatibleStrategy(LLMStrategy):
             "temperature": 0.3,
             "max_tokens": 4096,
         }
-
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-        }
-
-        # Set auth header (most use Authorization: Bearer, Anthropic uses x-api-key)
+        headers = {"Content-Type": "application/json"}
         if api_key:
-            if auth_prefix:
-                headers[auth_header] = f"{auth_prefix} {api_key}"
-            else:
-                headers[auth_header] = api_key
+            headers[auth_header] = f"{auth_prefix} {api_key}".strip() if auth_prefix else api_key
+            headers["User-Agent"] = "GraspMind-AI/1.0"
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
                 "POST", url, json=payload, headers=headers
             ) as response:
-                if response.status_code != 200:
+                if response.status_code == 429:
+                    raise ProviderFallbackError("The selected AI provider is currently at capacity. Please try again in a moment or switch to a different model in your settings.")
+                elif response.status_code != 200:
                     body = await response.aread()
-                    # Scrub any key echoes from error body
                     safe_body = scrub_keys(body.decode("utf-8", errors="replace")[:500])
-                    raise ProviderFallbackError(
-                        f"API returned status {response.status_code}: {safe_body}"
-                    )
+                    raise ProviderFallbackError(f"API returned status {response.status_code}: {safe_body}")
 
                 async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-
+                    if not line.startswith("data: "): continue
                     data = line.removeprefix("data: ").strip()
-                    if data == "[DONE]":
-                        break
-
+                    if data == "[DONE]": break
                     try:
                         chunk = json.loads(data)
-                        delta = chunk.get("choices", [{}])[0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, IndexError, KeyError):
-                        continue
-
-        except ProviderFallbackError:
-            raise
-        except httpx.RequestError as e:
-            raise ProviderFallbackError(
-                f"Connection error: {scrub_keys(str(e))}"
-            ) from e
+                        content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if content: yield content
+                    except: continue
         except Exception as e:
-            raise ProviderFallbackError(
-                f"Unexpected error: {scrub_keys(str(e))}"
-            ) from e
+            raise ProviderFallbackError(f"Unexpected error: {scrub_keys(str(e))}")
+
+    async def _stream_gemini_native(
+        self, messages: list[dict], base_url: str, api_key: str, model: str, timeout: float
+    ) -> AsyncGenerator[str]:
+        """Direct integration with Google's native streamGenerateContent REST API."""
+        # Smart versioning: preview/exp/thinking/new models MUST use v1beta
+        version = "v1beta" if any(x in model.lower() for x in ["preview", "exp", "thinking", "2.0", "3-", "3.0"]) else "v1"
+        
+        # Ensure the domain is correct and inject the version
+        domain = "https://generativelanguage.googleapis.com"
+        url = f"{domain}/{version}/models/{model}:streamGenerateContent?key={api_key}"
+        
+        contents = []
+        for msg in messages:
+            if msg["role"] == "system": continue # System instructions handled elsewhere or ignored in simple test
+            role = "model" if msg["role"] == "assistant" else "user"
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+
+        payload = {"contents": contents, "generationConfig": {"temperature": 0.1, "maxOutputTokens": 100}}
+        
+        buffer = ""
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
+                "POST", url, json=payload
+            ) as response:
+                if response.status_code == 429:
+                    raise ProviderFallbackError("Google Gemini is currently experiencing high demand. Please wait a moment or switch to an alternative provider in the chat settings to continue.")
+                elif response.status_code != 200:
+                    body = await response.aread()
+                    raise ProviderFallbackError(f"Google Native API error {response.status_code}: {body.decode()}")
+
+                async for chunk_bytes in response.aiter_bytes():
+                    buffer += chunk_bytes.decode(errors="replace")
+                    
+                    # Google sends a JSON array [ {...}, {...} ]. We need to extract the objects.
+                    while True:
+                        buffer = buffer.lstrip().lstrip("[").lstrip(",").lstrip().lstrip("]")
+                        if not buffer or not buffer.startswith("{"): break
+                        
+                        # Find the end of the current JSON object
+                        depth = 0
+                        end_pos = -1
+                        for i, char in enumerate(buffer):
+                            if char == "{": depth += 1
+                            elif char == "}":
+                                depth -= 1
+                                if depth == 0:
+                                    end_pos = i + 1
+                                    break
+                        
+                        if end_pos == -1: break # Incomplete object
+                        
+                        try:
+                            obj = json.loads(buffer[:end_pos])
+                            buffer = buffer[end_pos:].strip()
+                            
+                            candidates = obj.get("candidates", [{}])
+                            if candidates:
+                                text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                                if text: yield text
+                        except:
+                            break
+        except Exception as e:
+            logger.exception("Gemini Native strategy failed")
+            if isinstance(e, ProviderFallbackError): raise
+            raise ProviderFallbackError(f"Google Native connection failed: {scrub_keys(str(e))}")
 
 
 class AnthropicStrategy(LLMStrategy):

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # ── App ──────────────────────────────────────────────────
     app_name: str = "GraspMind AI"
     debug: bool = False
-    allowed_origins: str = "http://localhost:3000"  # Comma-separated
+    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"  # Comma-separated
 
     # ── LLM ──────────────────────────────────────────────────
     groq_api_key: str = ""

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Pydantic v2 schemas for request/response validation.
 
 All API inputs are validated through these schemas. Strict mode
@@ -32,9 +33,10 @@ class LoginRequest(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    access_token: str
+    access_token: str | None = None
     token_type: str = "bearer"
-    user: "UserResponse"
+    user: UserResponse | None = None
+    verification_required: bool = False
 
 
 class TokenRefreshRequest(BaseModel):

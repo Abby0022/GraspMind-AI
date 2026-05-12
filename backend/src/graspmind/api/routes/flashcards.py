@@ -127,13 +127,12 @@ async def generate_flashcards_endpoint(
         "notebook_id": notebook_id,
         "user_id": user.id,
         "title": deck_title,
-        "card_count": len(cards),
-    }).select().single().execute()
+    }).execute()
 
     if not deck_result.data:
         raise HTTPException(status_code=500, detail="Failed to create deck")
 
-    deck_id = deck_result.data["id"]
+    deck_id = deck_result.data[0]["id"]
 
     # Insert cards
     card_records = [
@@ -167,7 +166,7 @@ async def list_decks(
 ):
     """List all flashcard decks for a notebook."""
     result = await supabase.table("flashcard_decks").select(
-        "id, title, card_count, created_at"
+        "id, title, created_at"
     ).eq("notebook_id", notebook_id).eq(
         "user_id", user.id
     ).order("created_at", desc=True).execute()
@@ -182,20 +181,21 @@ async def get_deck(
     user: AuthUser,
     supabase=Depends(get_user_supabase),
 ):
-    """Get a deck with all its cards."""
     deck = await supabase.table("flashcard_decks").select("*").eq(
         "id", deck_id
-    ).eq("user_id", user.id).single().execute()
+    ).eq("user_id", user.id).execute()
 
     if not deck.data:
         raise HTTPException(status_code=404, detail="Deck not found")
+
+    deck_data = deck.data[0]
 
     cards = await supabase.table("flashcards").select(
         "id, front, back, card_type, tags, ease_factor, interval, repetitions, next_review"
     ).eq("deck_id", deck_id).execute()
 
     return {
-        **deck.data,
+        **deck_data,
         "cards": cards.data or [],
     }
 
@@ -213,7 +213,7 @@ async def review_card(
     # to the current user. Without both checks, any user can update any card.
     deck = await supabase.table("flashcard_decks").select("id").eq(
         "id", deck_id
-    ).eq("user_id", user.id).single().execute()
+    ).eq("user_id", user.id).execute()
 
     if not deck.data:
         raise HTTPException(status_code=404, detail="Deck not found")
@@ -221,15 +221,17 @@ async def review_card(
     # Now fetch the card — scoped to this deck to prevent cross-deck IDOR
     card = await supabase.table("flashcards").select("*").eq(
         "id", body.card_id
-    ).eq("deck_id", deck_id).single().execute()
+    ).eq("deck_id", deck_id).execute()
 
     if not card.data:
         raise HTTPException(status_code=404, detail="Card not found")
 
+    card_data = card.data[0]
+
     state = CardState(
-        ease_factor=card.data.get("ease_factor", 2.5),
-        interval=card.data.get("interval", 0),
-        repetitions=card.data.get("repetitions", 0),
+        ease_factor=card_data.get("ease_factor", 2.5),
+        interval=card_data.get("interval", 0),
+        repetitions=card_data.get("repetitions", 0),
     )
     new_state = sm2_schedule(state, body.quality)
 
@@ -261,10 +263,12 @@ async def export_deck(
     """Export a flashcard deck. Formats: csv, anki, json."""
     deck = await supabase.table("flashcard_decks").select("title").eq(
         "id", deck_id
-    ).eq("user_id", user.id).single().execute()
+    ).eq("user_id", user.id).execute()
 
     if not deck.data:
         raise HTTPException(status_code=404, detail="Deck not found")
+
+    deck_data = deck.data[0]
 
     cards_result = await supabase.table("flashcards").select(
         "front, back, card_type, tags"
@@ -282,13 +286,13 @@ async def export_deck(
 
     if export_format == "anki":
         content = export_to_anki_csv(cards)
-        filename = f"{sanitize_filename(deck.data['title'])}.txt"
+        filename = f"{sanitize_filename(deck_data['title'])}.txt"
     elif export_format == "json":
         content = export_to_json(cards)
-        filename = f"{sanitize_filename(deck.data['title'])}.json"
+        filename = f"{sanitize_filename(deck_data['title'])}.json"
     else:
         content = export_to_csv(cards)
-        filename = f"{sanitize_filename(deck.data['title'])}.csv"
+        filename = f"{sanitize_filename(deck_data['title'])}.csv"
 
     return PlainTextResponse(
         content=content,

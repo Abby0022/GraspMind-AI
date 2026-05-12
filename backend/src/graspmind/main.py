@@ -4,9 +4,13 @@ This is the main application factory. It configures security
 middleware, registers route modules, and exposes health endpoints.
 """
 
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+
+logger = logging.getLogger(__name__)
 
 from graspmind import __version__
 from graspmind.api.routes import (

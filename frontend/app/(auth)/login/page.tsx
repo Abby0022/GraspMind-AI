@@ -260,7 +260,7 @@ export default function LoginPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       required
                       autoComplete="email"
-                      className="pl-9 h-10 rounded-xl border-[#e5e5e5] bg-white text-sm text-[#111] placeholder:text-[#bbb] focus-visible:ring-1 focus-visible:ring-[#111] focus-visible:border-[#111]"
+                      className="pl-10 h-11 rounded-full border border-border bg-secondary/30 text-sm text-[#111] placeholder:text-[#bbb] hover:bg-secondary/50 hover:border-foreground/20 focus-visible:bg-white focus-visible:border-primary/50 focus-visible:ring-4 focus-visible:ring-primary/5 transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -278,7 +278,7 @@ export default function LoginPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       required
                       autoComplete="current-password"
-                      className="pl-9 h-10 rounded-xl border-[#e5e5e5] bg-white text-sm text-[#111] placeholder:text-[#bbb] focus-visible:ring-1 focus-visible:ring-[#111] focus-visible:border-[#111]"
+                      className="pl-10 h-11 rounded-full border border-border bg-secondary/30 text-sm text-[#111] placeholder:text-[#bbb] hover:bg-secondary/50 hover:border-foreground/20 focus-visible:bg-white focus-visible:border-primary/50 focus-visible:ring-4 focus-visible:ring-primary/5 transition-all outline-none"
                     />
                   </div>
                 </div>
@@ -286,7 +286,7 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full h-10 bg-[#111] text-white text-sm font-medium rounded-xl hover:bg-[#222] transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                  className="w-full h-11 bg-[#111] text-white text-sm font-semibold rounded-full hover:bg-[#222] active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm"
                 >
                   {isLoading && (
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />

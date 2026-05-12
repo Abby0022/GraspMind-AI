@@ -422,7 +422,7 @@ export function SettingsClient({ user }: { user: User }) {
                     placeholder={selectedProvider?.key_hint || "Enter API key"}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
-                    className="h-11 rounded-xl text-[13px] pr-10 font-mono bg-secondary/50 border-transparent hover:border-border/50 focus:bg-background focus:border-primary/50 focus:ring-2 focus:ring-primary/20 shadow-none transition-all"
+                    className="h-11 rounded-full text-[13px] pr-12 font-mono bg-secondary/30 border border-border hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 shadow-none transition-all outline-none"
                   />
                   <button
                     type="button"
@@ -448,7 +448,7 @@ export function SettingsClient({ user }: { user: User }) {
                 <select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="w-full h-11 rounded-xl bg-secondary/50 border-transparent hover:border-border/50 focus:bg-background focus:border-primary/50 focus:ring-2 focus:ring-primary/20 px-3 text-[13px] text-foreground outline-none shadow-none transition-all"
+                  className="w-full h-11 rounded-full bg-secondary/30 border border-border hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 px-4 text-[13px] text-foreground outline-none shadow-none transition-all appearance-none cursor-pointer"
                 >
                   {selectedProvider.models.map((m) => (
                     <option key={m} value={m}>
@@ -461,7 +461,7 @@ export function SettingsClient({ user }: { user: User }) {
                   placeholder="Model name"
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="h-11 rounded-xl text-[13px] bg-secondary/50 border-transparent hover:border-border/50 focus:bg-background focus:border-primary/50 focus:ring-2 focus:ring-primary/20 shadow-none transition-all"
+                  className="h-11 rounded-full text-[13px] bg-secondary/30 border border-border hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 shadow-none transition-all outline-none"
                 />
               )}
             </div>
@@ -477,7 +477,7 @@ export function SettingsClient({ user }: { user: User }) {
                   placeholder="http://localhost:11434"
                   value={customUrl}
                   onChange={(e) => setCustomUrl(e.target.value)}
-                  className="h-11 rounded-xl text-[13px] font-mono bg-secondary/50 border-transparent hover:border-border/50 focus:bg-background focus:border-primary/50 focus:ring-2 focus:ring-primary/20 shadow-none transition-all"
+                  className="h-11 rounded-full text-[13px] font-mono bg-secondary/30 border border-border hover:bg-secondary/50 hover:border-foreground/20 focus:bg-background focus:border-primary/50 focus:ring-4 focus:ring-primary/5 shadow-none transition-all outline-none"
                 />
               </div>
             )}

@@ -249,3 +249,35 @@ async def _load_from_db(user_id: str) -> dict | None:
         logger.warning("Failed to load user LLM config: %s", str(e))
 
     return None
+async def resolve_alternate_fallback(user_id: str, exclude_slugs: set[str]) -> ResolvedLLM | None:
+    """Find a server-level fallback that isn't in the exclude list."""
+    settings = get_settings()
+    
+    # Try alternate server keys
+    config = None
+    if settings.google_api_key and "google" not in exclude_slugs:
+        config = {
+            "provider": "google",
+            "_raw_key": settings.google_api_key,
+            "model": "gemini-2.0-flash",
+        }
+    elif settings.groq_api_key and "groq" not in exclude_slugs:
+        config = {
+            "provider": "groq",
+            "_raw_key": settings.groq_api_key,
+            "model": settings.llm_model,
+        }
+    
+    if not config:
+        return None
+        
+    provider_spec = get_provider(config["provider"])
+    if not provider_spec:
+        return None
+
+    return ResolvedLLM(
+        provider_spec=provider_spec,
+        api_key=config["_raw_key"],
+        model=config.get("model") or provider_spec.default_model,
+        base_url=provider_spec.base_url,
+    )
