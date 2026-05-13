@@ -37,7 +37,7 @@ function MasteryBar({ value }: { value: number }) {
   );
 }
 
-export function MembersTable({ members, onRemove }: MembersTableProps) {
+export function MembersTable({ members, sections, onRemove, onUpdateSection }: MembersTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>("joined_at");
   const [sortAsc, setSortAsc] = useState(true);
 
