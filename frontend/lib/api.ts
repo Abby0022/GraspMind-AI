@@ -170,7 +170,7 @@ export const api = {
       assignmentId: string,
       data: { status: "pending" | "in_progress" | "submitted"; score?: number; focus_lost_count?: number },
     ) =>
-      request(`/assignments/${assignmentId}/submit`, {
+      request<Required<NonNullable<Assignment["my_submission"]>>>(`/assignments/${assignmentId}/submit`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),

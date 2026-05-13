@@ -95,12 +95,10 @@ export default function MyClassesPage() {
 
   async function markSubmitted(assignmentId: string) {
     try {
-      await api.assignments.submit(assignmentId, { status: "submitted" });
+      const updatedSubmission = await api.assignments.submit(assignmentId, { status: "submitted" });
       setAssignments((prev) =>
         prev.map((a) =>
-          a.id === assignmentId
-            ? { ...a, my_submission: { status: "submitted", score: null, submitted_at: new Date().toISOString() } }
-            : a
+          a.id === assignmentId ? { ...a, my_submission: updatedSubmission } : a
         )
       );
       toast.success("Marked as done!");
