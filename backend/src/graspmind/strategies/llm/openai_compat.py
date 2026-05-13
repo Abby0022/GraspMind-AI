@@ -42,14 +42,15 @@ class OpenAICompatibleStrategy(LLMStrategy):
     ) -> AsyncGenerator[str]:
         """Stream SSE response from an OpenAI-compatible endpoint or native Google API."""
         # Defensive checks
-        if not base_url: base_url = ""
-        if not model: model = ""
-        if not api_key: api_key = ""
+        if not base_url:
+            raise ProviderFallbackError("API Base URL is required but was not provided.")
+        if not model:
+            raise ProviderFallbackError("Model name is required but was not provided.")
         
         # ── SPECIAL CASE: Native Google Gemini REST API ──────────────────
         if "generativelanguage.googleapis.com" in base_url:
             logger.debug("Routing to native Gemini strategy for model: %s", model)
-            async for chunk in self._stream_gemini_native(messages, base_url, api_key, model, timeout):
+            async for chunk in self._stream_gemini_native(messages, base_url, api_key or "", model, timeout, **kwargs):
                 yield chunk
             return
 
@@ -59,55 +60,80 @@ class OpenAICompatibleStrategy(LLMStrategy):
             "model": model,
             "messages": messages,
             "stream": True,
-            "temperature": 0.3,
-            "max_tokens": 4096,
+            "temperature": kwargs.get("temperature", 0.3),
+            "max_tokens": kwargs.get("max_tokens", 4096),
         }
+        
+        # Handle reasoning effort for o1/o3/DeepSeek-R1 models
+        model_low = model.lower()
+        if any(x in model_low for x in ["o1", "o3", "reasoning", "r1"]):
+            payload["reasoning_effort"] = kwargs.get("reasoning_effort", "medium")
+
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers[auth_header] = f"{auth_prefix} {api_key}".strip() if auth_prefix else api_key
             headers["User-Agent"] = "GraspMind-AI/1.0"
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
-                "POST", url, json=payload, headers=headers
-            ) as response:
-                if response.status_code == 429:
-                    raise ProviderFallbackError("The selected AI provider is currently at capacity. Please try again in a moment or switch to a different model in your settings.")
-                elif response.status_code != 200:
-                    body = await response.aread()
-                    safe_body = scrub_keys(body.decode("utf-8", errors="replace")[:500])
-                    raise ProviderFallbackError(f"API returned status {response.status_code}: {safe_body}")
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("POST", url, json=payload, headers=headers) as response:
+                    if response.status_code == 429:
+                        raise ProviderFallbackError("The selected AI provider is currently at capacity (429). Please wait a moment or switch to a different provider.")
+                    elif response.status_code != 200:
+                        body = await response.aread()
+                        safe_body = scrub_keys(body.decode("utf-8", errors="replace")[:500])
+                        raise ProviderFallbackError(f"API Error {response.status_code}: {safe_body}")
 
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "): continue
-                    data = line.removeprefix("data: ").strip()
-                    if data == "[DONE]": break
-                    try:
-                        chunk = json.loads(data)
-                        content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        if content: yield content
-                    except: continue
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "): continue
+                        data = line.removeprefix("data: ").strip()
+                        if data == "[DONE]": break
+                        try:
+                            chunk = json.loads(data)
+                            choices = chunk.get("choices", [{}])
+                            if not choices: continue
+                            content = choices[0].get("delta", {}).get("content", "")
+                            if content: yield content
+                        except: continue
         except Exception as e:
-            raise ProviderFallbackError(f"Unexpected error: {scrub_keys(str(e))}")
+            if isinstance(e, ProviderFallbackError): raise
+            raise ProviderFallbackError(f"Connection failed: {scrub_keys(str(e))}")
 
     async def _stream_gemini_native(
-        self, messages: list[dict], base_url: str, api_key: str, model: str, timeout: float
+        self, messages: list[dict], base_url: str, api_key: str, model: str, timeout: float, **kwargs
     ) -> AsyncGenerator[str]:
         """Direct integration with Google's native streamGenerateContent REST API."""
         # Smart versioning: preview/exp/thinking/new models MUST use v1beta
-        version = "v1beta" if any(x in model.lower() for x in ["preview", "exp", "thinking", "2.0", "3-", "3.0"]) else "v1"
+        version = "v1beta" if any(x in model.lower() for x in ["preview", "exp", "thinking", "2.0", "3-", "3.0", "3.1"]) else "v1"
         
         # Ensure the domain is correct and inject the version
         domain = "https://generativelanguage.googleapis.com"
         url = f"{domain}/{version}/models/{model}:streamGenerateContent?key={api_key}"
         
         contents = []
+        system_instruction = None
+        
         for msg in messages:
-            if msg["role"] == "system": continue # System instructions handled elsewhere or ignored in simple test
+            if msg["role"] == "system":
+                system_instruction = {"parts": [{"text": msg["content"]}]}
+                continue
             role = "model" if msg["role"] == "assistant" else "user"
             contents.append({"role": role, "parts": [{"text": msg["content"]}]})
 
-        payload = {"contents": contents, "generationConfig": {"temperature": 0.1, "maxOutputTokens": 100}}
+        payload = {
+            "contents": contents, 
+            "generationConfig": {
+                "temperature": kwargs.get("temperature", 0.2), 
+                "maxOutputTokens": kwargs.get("max_tokens", 4096)
+            }
+        }
+        
+        if system_instruction:
+            payload["system_instruction"] = system_instruction
+            
+        # Support thinking_level for Gemini 3 models
+        if "3-" in model or "3.1" in model or "thinking" in model.lower():
+            payload["thinking_level"] = kwargs.get("thinking_level", "HIGH")
         
         buffer = ""
         try:
@@ -192,15 +218,15 @@ class AnthropicStrategy(LLMStrategy):
             "model": model,
             "messages": chat_messages,
             "stream": True,
-            "max_tokens": 4096,
-            "temperature": 0.3,
+            "max_tokens": kwargs.get("max_tokens", 4096),
+            "temperature": kwargs.get("temperature", 0.3),
         }
         if system_text.strip():
             payload["system"] = system_text.strip()
 
         headers = {
             "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
+            "anthropic-version": "2023-06-01", # Note: Anthropic versions are static for long periods
             "Content-Type": "application/json",
         }
 

@@ -59,6 +59,21 @@ export function AnalyticsChart({ analytics }: AnalyticsChartProps) {
     quizzes: s.quizzes_done,
   }));
 
+  // Grade distribution bins (Histogram)
+  const bins = [0, 20, 40, 60, 80, 100];
+  const distributionData = bins.slice(0, -1).map((lower, i) => {
+    const upper = bins[i+1];
+    const count = analytics.per_student.filter(s => {
+      const m = s.avg_mastery * 100;
+      return i === bins.length - 2 ? (m >= lower && m <= upper) : (m >= lower && m < upper);
+    }).length;
+    return {
+      range: `${lower}-${upper}%`,
+      count,
+      color: i === 0 ? "#ef4444" : i === 1 ? "#f97316" : i === 2 ? "#f59e0b" : i === 3 ? "#84cc16" : "#10b981"
+    };
+  });
+
   // Weakest concepts bar chart data
   const conceptData = analytics.weakest_concepts.map((c, i) => ({
     concept: c.length > 18 ? `${c.slice(0, 18)}…` : c,
@@ -88,6 +103,56 @@ export function AnalyticsChart({ analytics }: AnalyticsChartProps) {
           value={analytics.weakest_concepts.length}
           sub="need attention"
         />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Grade Distribution */}
+        <div className="rounded-xl border border-border/50 bg-card/60 p-5">
+          <h4 className="text-[13px] font-semibold text-foreground mb-4">Grade Distribution</h4>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={distributionData} margin={{ top: 0, right: 0, left: -30, bottom: 0 }}>
+              <XAxis dataKey="range" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+              <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+              <Tooltip 
+                cursor={{ fill: "var(--muted)/0.3" }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  return (
+                    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-[12px] shadow-lg">
+                      <p className="font-semibold text-foreground">{payload[0].payload.range}</p>
+                      <p className="text-muted-foreground">Students: <span className="text-foreground font-bold">{payload[0].value}</span></p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                {distributionData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Weakest concepts list */}
+        {analytics.weakest_concepts.length > 0 && (
+          <div className="rounded-xl border border-border/50 bg-card/60 p-5">
+            <h4 className="text-[13px] font-semibold text-foreground mb-3 flex items-center gap-2">
+              <TrendingDown className="w-4 h-4 text-rose-500" />
+              Weakest Concepts
+            </h4>
+            <ol className="space-y-2">
+              {analytics.weakest_concepts.slice(0, 5).map((concept, i) => (
+                <li key={concept} className="flex items-center gap-3 text-[13px]">
+                  <span className="w-5 h-5 rounded-full bg-rose-500/10 flex items-center justify-center text-[10px] font-bold text-rose-500 flex-shrink-0">
+                    {i + 1}
+                  </span>
+                  <span className="text-foreground font-medium truncate">{concept}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
       </div>
 
       {/* Per-student mastery bar chart */}
@@ -135,26 +200,48 @@ export function AnalyticsChart({ analytics }: AnalyticsChartProps) {
         </div>
       )}
 
-      {/* Weakest concepts list */}
-      {analytics.weakest_concepts.length > 0 && (
+      {/* Per-student mastery bar chart */}
+      {studentData.length > 0 && (
         <div className="rounded-xl border border-border/50 bg-card/60 p-5">
-          <h4 className="text-[13px] font-semibold text-foreground mb-3 flex items-center gap-2">
-            <TrendingDown className="w-4 h-4 text-rose-500" />
-            Weakest Concepts
+          <h4 className="text-[13px] font-semibold text-foreground mb-4">
+            Student Mastery Overview
           </h4>
-          <ol className="space-y-2">
-            {analytics.weakest_concepts.map((concept, i) => (
-              <li
-                key={concept}
-                className="flex items-center gap-3 text-[13px]"
-              >
-                <span className="w-5 h-5 rounded-full bg-rose-500/10 flex items-center justify-center text-[10px] font-bold text-rose-500 flex-shrink-0">
-                  {i + 1}
-                </span>
-                <span className="text-foreground font-medium">{concept}</span>
-              </li>
-            ))}
-          </ol>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={studentData} margin={{ top: 0, right: 8, left: -20, bottom: 0 }}>
+              <XAxis
+                dataKey="name"
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                domain={[0, 100]}
+                tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(v) => `${v}%`}
+              />
+              <Tooltip
+                cursor={{ fill: "var(--muted)/0.3" }}
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null;
+                  const d = payload[0].payload;
+                  return (
+                    <div className="rounded-lg border border-border bg-popover px-3 py-2 text-[12px] shadow-lg">
+                      <p className="font-semibold text-foreground">{d.name}</p>
+                      <p className="text-muted-foreground">Mastery: <span className="text-foreground font-bold">{d.mastery}%</span></p>
+                      <p className="text-muted-foreground">Quizzes: <span className="text-foreground font-bold">{d.quizzes}</span></p>
+                    </div>
+                  );
+                }}
+              />
+              <Bar dataKey="mastery" radius={[4, 4, 0, 0]}>
+                {studentData.map((entry, i) => (
+                  <Cell key={i} fill={masteryColor(entry.mastery / 100)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
     </div>

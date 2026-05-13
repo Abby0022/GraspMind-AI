@@ -3,6 +3,7 @@
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import * as React from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
@@ -14,7 +15,7 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <div className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center opacity-0 transition-opacity" />
+      <div className="w-9 h-9 rounded-full border border-border bg-background flex items-center justify-center opacity-0" />
     );
   }
 
@@ -26,10 +27,26 @@ export function ThemeToggle() {
   return (
     <button
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="w-8 h-8 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+      className="w-9 h-9 rounded-full border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-all duration-300 relative overflow-hidden group shadow-sm active:scale-95"
       title={`Switch to ${isDark ? "light" : "dark"} theme`}
     >
-      {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={isDark ? "dark" : "light"}
+          initial={{ y: 20, opacity: 0, rotate: -45 }}
+          animate={{ y: 0, opacity: 1, rotate: 0 }}
+          exit={{ y: -20, opacity: 0, rotate: 45 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+          className="flex items-center justify-center"
+        >
+          {isDark ? (
+            <Moon className="w-4 h-4 fill-foreground/10 group-hover:fill-foreground/20 transition-colors" />
+          ) : (
+            <Sun className="w-4 h-4" />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </button>
   );
 }
+

@@ -2,6 +2,7 @@
 
 import logging
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from supabase import AsyncClient, acreate_client
@@ -14,34 +15,18 @@ logger = logging.getLogger(__name__)
 # Re-export for convenient importing
 AuthUser = Annotated[CurrentUser, Depends(get_current_user)]
 
-_supabase_service_client: AsyncClient | None = None
-
+from graspmind.supabase_client import create_user_client, get_service_client
 
 async def get_service_supabase(settings: Settings = Depends(get_settings)) -> AsyncClient:
-    """Lazy singleton Supabase client (uses service key for background/admin ops).
-
-    WARNING: This client bypasses RLS. Use ONLY for background tasks that run
-    outside of a user request context (e.g., ingestion workers).
-    """
-    global _supabase_service_client  # noqa: PLW0603
-    if _supabase_service_client is None:
-        _supabase_service_client = await acreate_client(
-            settings.supabase_url,
-            settings.supabase_service_key,
-        )
-    return _supabase_service_client
+    """FastAPI dependency for the service client."""
+    return await get_service_client(settings)
 
 
 async def get_user_supabase(
     request: Request,
     settings: Settings = Depends(get_settings),
 ) -> AsyncClient:
-    """Creates a Supabase client scoped to the current user's session.
-
-    Uses the anon key and injects the user's JWT via set_session(), which
-    instructs Postgres to evaluate RLS policies as that user. If no valid
-    token is found, raises HTTP 401 to prevent silent RLS bypass.
-    """
+    """FastAPI dependency for the user-scoped client (RLS active)."""
     # Extract JWT token from cookie or Authorization header
     token = request.cookies.get("access_token")
     if not token:
@@ -49,7 +34,6 @@ async def get_user_supabase(
         if auth_header.startswith("Bearer "):
             token = auth_header.removeprefix("Bearer ").strip()
 
-    # Enforce that a token is present — never return an unauthenticated client
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -57,14 +41,7 @@ async def get_user_supabase(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Create a fresh per-request client with anon key
-    client = await acreate_client(settings.supabase_url, settings.supabase_anon_key)
-
-    # Inject the user's JWT so Postgres evaluates RLS as this user
-    # refresh_token is not needed here — we are only setting DB context
-    await client.auth.set_session(access_token=token, refresh_token=token)
-
-    return client
+    return await create_user_client(settings, token)
 
 
 # Typed aliases for cleaner route signatures
@@ -72,24 +49,52 @@ UserSupabase = Annotated[AsyncClient, Depends(get_user_supabase)]
 ServiceSupabase = Annotated[AsyncClient, Depends(get_service_supabase)]
 
 
-async def require_teacher(
+async def require_faculty(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     supabase: AsyncClient = Depends(get_service_supabase),
 ) -> CurrentUser:
-    """Dependency that enforces teacher role by querying public.users.
-
-    IMPORTANT: This must NOT use user.role from the JWT (user_metadata) because
-    that field is set by the client at signup and can be spoofed. The DB is the
-    canonical source of truth for role checks on privileged operations.
-    """
+    """Enforces faculty access (Teacher, TA, or Admin) via authoritative DB check."""
     result = await supabase.table("users").select("role").eq("id", user.id).single().execute()
-    if not result.data or result.data.get("role") != "teacher":
+    role = result.data.get("role") if result.data else None
+    
+    if role not in ("teacher", "ta", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Teacher access required.",
+            detail="Faculty access required.",
         )
     return user
 
 
-# Typed alias: use this in teacher-only routes instead of AuthUser
-TeacherUser = Annotated[CurrentUser, Depends(require_teacher)]
+# Aliases for route dependencies
+TeacherUser = Annotated[CurrentUser, Depends(require_faculty)]
+FacultyUser = Annotated[CurrentUser, Depends(require_faculty)]
+
+
+async def verify_faculty_access(
+    class_id: str | UUID, 
+    user_id: str | UUID, 
+    supabase: AsyncClient,
+    require_owner: bool = False
+) -> str:
+    """Verifies that a user has faculty access to a specific course.
+    
+    Returns the role ('owner', 'teacher', 'ta', 'admin').
+    Raises HTTPException if access is denied.
+    """
+    class_id_str = str(class_id)
+    user_id_str = str(user_id)
+
+    # 1. Check if user is the primary owner (Teacher)
+    cls = await supabase.table("classes").select("teacher_id").eq("id", class_id_str).maybe_single().execute()
+    if cls.data and cls.data["teacher_id"] == user_id_str:
+        return "owner"
+
+    if require_owner:
+        raise HTTPException(status_code=403, detail="Owner-level permission required.")
+
+    # 2. Check if user is delegated staff (TA / Collaborating Teacher)
+    staff = await supabase.table("course_staff").select("role").eq("class_id", class_id_str).eq("user_id", user_id_str).maybe_single().execute()
+    if staff.data:
+        return staff.data["role"]
+
+    raise HTTPException(status_code=403, detail="Faculty access to this course denied.")

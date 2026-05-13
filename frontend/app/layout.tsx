@@ -45,7 +45,11 @@ export default function RootLayout({
           disableTransitionOnChange={false}
         >
           {children}
-          <Toaster position="top-center" />
+          <Toaster 
+            position="bottom-right" 
+            expand={true} 
+            gap={8}
+          />
         </ThemeProvider>
       </body>
     </html>

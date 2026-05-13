@@ -43,11 +43,13 @@ export function FlashcardsClient({
   userId,
   isEmbedded,
   examDate,
+  assignmentId,
 }: {
   notebookId: string;
   userId: string;
   isEmbedded?: boolean;
   examDate?: string;
+  assignmentId?: string;
 }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("generate");

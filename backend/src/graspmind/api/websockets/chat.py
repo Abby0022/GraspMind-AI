@@ -23,6 +23,19 @@ from graspmind.rag.hybrid_retriever import hybrid_retrieve
 from graspmind.rag.llm_client import stream_chat_completion
 from graspmind.rag.prompt_builder import build_prompt, extract_citations
 from graspmind.security.key_sanitizer import scrub_keys
+from graspmind.security.rate_limiter import RateLimiter, get_redis
+from graspmind.memory.episodic import (
+    format_episodes_for_prompt,
+    get_relevant_episodes,
+)
+from graspmind.memory.semantic import (
+    format_knowledge_for_prompt,
+    get_weak_areas,
+)
+from graspmind.workers.feynman_worker import evaluate_explanation_task
+from graspmind.workers.episodic_worker import summarize_session_task
+from supabase import acreate_client
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +43,20 @@ router = APIRouter(tags=["Chat"])
 
 
 async def _authenticate_ws(websocket: WebSocket, settings: Settings) -> str | None:
-    """Authenticate WebSocket connection from cookie or query param.
-
-    Returns user_id if valid, None otherwise.
+    """Authenticate WebSocket connection and prevent CSWSH.
+    
+    Returns user_id if valid and origin is trusted, None otherwise.
     """
+    # ── CSWSH Protection: Verify Origin ──────────────────────────────────
+    origin = websocket.headers.get("origin")
+    allowed = settings.cors_origins
+    
+    # In production, we MUST have a matching origin
+    if not settings.debug:
+        if not origin or origin not in allowed:
+            logger.warning("Blocked WebSocket connection from unauthorized origin: %s", origin)
+            return None
+
     # Try cookie first
     token = websocket.cookies.get("access_token")
 
@@ -45,7 +68,7 @@ async def _authenticate_ws(websocket: WebSocket, settings: Settings) -> str | No
         return None
 
     try:
-        from supabase import acreate_client
+        # Use a single client for auth check
         client = await acreate_client(settings.supabase_url, settings.supabase_anon_key)
         response = await client.auth.get_user(token)
         user = response.user
@@ -76,9 +99,14 @@ async def chat_websocket(
         await websocket.close(code=4001)
         return
 
+    # ── SECURITY: Initialize Shared Resources ────────────────────────
+    supabase = await acreate_client(settings.supabase_url, settings.supabase_service_key)
+    redis = await get_redis(settings)
+    chat_limiter = RateLimiter(max_requests=10, window_seconds=60)
+    
     # Active session ID (created on first message or reused from client)
     active_session_id: str | None = None
-    notebook_id: str = ""
+    last_verified_notebook: str | None = None
 
     try:
         while True:
@@ -103,6 +131,29 @@ async def chat_websocket(
 
             if not notebook_id:
                 await websocket.send_json({"type": "error", "content": "notebook_id required"})
+                continue
+
+            # ── SECURITY: Verify Notebook Ownership (Cached per session) ─────
+            if notebook_id != last_verified_notebook:
+                try:
+                    # Check ownership or share
+                    nb_check = await supabase.table("notebooks").select("user_id").eq("id", notebook_id).maybe_single().execute()
+                    if not nb_check.data or nb_check.data["user_id"] != user_id:
+                        # Check shares
+                        share_check = await supabase.table("notebook_shares").select("id").eq("notebook_id", notebook_id).eq("user_id", user_id).maybe_single().execute()
+                        if not share_check.data:
+                            logger.warning("Unauthorized notebook access attempt: user=%s notebook=%s", user_id, notebook_id)
+                            await websocket.send_json({"type": "error", "content": "Access denied to this notebook"})
+                            continue
+                    last_verified_notebook = notebook_id
+                except Exception as e:
+                    logger.error("Notebook ownership check failed: %s", e)
+                    await websocket.send_json({"type": "error", "content": "Security verification failed"})
+                    continue
+
+            # ── SECURITY: Message Rate Limiting ──────────────────────────────
+            if not await chat_limiter.is_allowed(user_id, path="ws_chat", redis=redis):
+                await websocket.send_json({"type": "error", "content": "Rate limit exceeded. Slow down!"})
                 continue
 
             # Validate message length
@@ -144,15 +195,6 @@ async def chat_websocket(
                 episodic_ctx = ""
                 knowledge_ctx = ""
                 try:
-                    from graspmind.memory.episodic import (
-                        format_episodes_for_prompt,
-                        get_relevant_episodes,
-                    )
-                    from graspmind.memory.semantic import (
-                        format_knowledge_for_prompt,
-                        get_weak_areas,
-                    )
-
                     episodes = await get_relevant_episodes(
                         user_id, notebook_id, query=content, limit=3,
                     )
@@ -175,7 +217,18 @@ async def chat_websocket(
 
                 # Step 4: Stream LLM response (BYOK — uses user's configured provider)
                 full_response = ""
-                async for token in stream_chat_completion(prompt_messages, user_id=user_id):
+                extra_params = {}
+                if message.get("thinking_level"):
+                    extra_params["thinking_level"] = message.get("thinking_level")
+                if message.get("reasoning_effort"):
+                    extra_params["reasoning_effort"] = message.get("reasoning_effort")
+
+                async for token in stream_chat_completion(
+                    prompt_messages, 
+                    user_id=user_id, 
+                    provider_override=provider_override,
+                    **extra_params
+                ):
                     full_response += token
                     await websocket.send_json({
                         "type": "token",
@@ -209,25 +262,22 @@ async def chat_websocket(
                     citations=enriched_citations,
                 )
 
-                # Step 8: Persist to database (best-effort)
-                try:
-                    await _persist_message(
-                        user_id=user_id,
-                        notebook_id=notebook_id,
-                        session_id=active_session_id,
-                        user_content=content,
-                        assistant_content=full_response,
-                        citations=enriched_citations,
-                    )
-                except Exception as exc:
-                    logger.warning("Failed to persist message: %s", exc)
+                # Step 8: Persist to database (background)
+                # Backgrounding this prevents DB latency from affecting the WebSocket responsiveness
+                asyncio.create_task(_persist_message(
+                    user_id=user_id,
+                    notebook_id=notebook_id,
+                    session_id=active_session_id,
+                    user_content=content,
+                    assistant_content=full_response,
+                    citations=enriched_citations,
+                    supabase_client=supabase
+                ))
 
                 # Step 9: If Feynman mode, trigger background evaluation
                 if chat_mode == "feynman":
                     try:
-                        # Use the retrieved context text to ground the evaluation
                         from graspmind.rag.prompt_builder import _format_contexts
-                        from graspmind.workers.feynman_worker import evaluate_explanation_task
                         context_text = _format_contexts(contexts) if contexts else ""
 
                         await evaluate_explanation_task.kiq(
@@ -250,9 +300,9 @@ async def chat_websocket(
         logger.info("WebSocket disconnected for user %s", user_id)
 
         # Trigger episodic memory worker (async — doesn't block disconnect)
+        # Trigger episodic memory worker (async — doesn't block disconnect)
         if active_session_id:
             try:
-                from graspmind.workers.episodic_worker import summarize_session_task
                 await summarize_session_task.kiq(
                     session_id=active_session_id,
                     user_id=user_id,
@@ -272,18 +322,20 @@ async def _persist_message(
     user_content: str,
     assistant_content: str,
     citations: list[dict],
+    supabase_client: any = None,
 ) -> None:
-    """Persist chat messages to Supabase (best-effort).
-
-    Creates or reuses a chat session, then inserts both
-    the user message and assistant response.
+    """Persist chat messages to Supabase.
+    
+    Reuses provided Supabase client to avoid overhead.
     """
     from supabase import acreate_client
-
     from graspmind.config import get_settings
 
-    settings = get_settings()
-    supabase = await acreate_client(settings.supabase_url, settings.supabase_service_key)
+    if not supabase_client:
+        settings = get_settings()
+        supabase_client = await acreate_client(settings.supabase_url, settings.supabase_service_key)
+    
+    supabase = supabase_client
 
     # Ensure session exists in Supabase (upsert)
     if session_id:

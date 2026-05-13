@@ -41,7 +41,7 @@ async def rerank(
     top_k: int = 8,
     settings: Settings | None = None,
 ) -> list[RankedResult]:
-    """Rerank fused results using a cross-encoder model.
+    """Rerank fused results using a cross-encoder model or API.
 
     Falls back to original fusion scores if reranking fails.
 
@@ -58,13 +58,28 @@ async def rerank(
         return []
 
     s = settings or get_settings()
+    scores = None
 
-    try:
-        scores = await _rerank_ollama(query, results, s)
-    except Exception as exc:
-        # Silently fall back to fusion scores to avoid log noise if Ollama isn't running
-        logger.debug("Reranker unreachable (Ollama down), using fusion scores: %s", exc)
-        scores = [r.score for r in results]
+    # 1. Try dedicated Reranker APIs first (Cohere/Jina)
+    if s.cohere_api_key:
+        try:
+            scores = await _rerank_cohere(query, results, s)
+        except Exception as e:
+            logger.warning("Cohere rerank failed: %s", e)
+
+    if not scores and s.jina_api_key:
+        try:
+            scores = await _rerank_jina(query, results, s)
+        except Exception as e:
+            logger.warning("Jina rerank failed: %s", e)
+
+    # 2. Fall back to local Ollama (Bi-Encoder similarity)
+    if not scores:
+        try:
+            scores = await _rerank_ollama(query, results, s)
+        except Exception as exc:
+            logger.debug("Local reranker fallback failed: %s", exc)
+            scores = [r.score for r in results]
 
     # Combine results with reranker scores
     ranked: list[RankedResult] = []
@@ -83,13 +98,52 @@ async def rerank(
 
     # Sort by reranker score
     ranked.sort(key=lambda x: x.rerank_score, reverse=True)
-
-    logger.info(
-        "Reranked %d results → top %d returned",
-        len(ranked), min(top_k, len(ranked)),
-    )
-
     return ranked[:top_k]
+
+
+async def _rerank_cohere(query: str, results: list[FusedResult], settings: Settings) -> list[float]:
+    """Use Cohere's Rerank v3.5 API for high-precision ranking."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            "https://api.cohere.com/v2/rerank",
+            headers={
+                "Authorization": f"Bearer {settings.cohere_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "rerank-v3.5",
+                "query": query,
+                "documents": [r.content for r in results],
+                "top_n": len(results),
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        # Sort back to original order to extract scores
+        results_map = {item["index"]: item["relevance_score"] for item in data["results"]}
+        return [results_map[i] for i in range(len(results))]
+
+
+async def _rerank_jina(query: str, results: list[FusedResult], settings: Settings) -> list[float]:
+    """Use Jina's Reranker v2 API."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        response = await client.post(
+            "https://api.jina.ai/v1/rerank",
+            headers={
+                "Authorization": f"Bearer {settings.jina_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "jina-reranker-v2-base-multilingual",
+                "query": query,
+                "documents": [r.content for r in results],
+                "top_n": len(results),
+            },
+        )
+        response.raise_for_status()
+        data = response.json()
+        results_map = {item["index"]: item["relevance_score"] for item in data["results"]}
+        return [results_map[i] for i in range(len(results))]
 
 
 async def _rerank_ollama(
@@ -97,41 +151,24 @@ async def _rerank_ollama(
     results: list[FusedResult],
     settings: Settings,
 ) -> list[float]:
-    """Score query-passage pairs using Ollama's embedding similarity.
-
-    Uses a lightweight approach: embed the query and each passage,
-    then compute cosine similarity. For full cross-encoder reranking,
-    a dedicated model like bge-reranker-v2-m3 can be loaded.
+    """Score query-passage pairs using Ollama's embedding similarity (Bi-Encoder).
+    
+    This is a fallback and less accurate than a true Cross-Encoder.
     """
     url = f"{settings.ollama_base_url}/api/embed"
-
-    # Build texts to embed: [query, passage1, passage2, ...]
     texts = [query] + [r.content for r in results]
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(url, json={
-            "model": "bge-m3",  # Lightweight multilingual model
+            "model": "bge-m3",
             "input": texts,
         })
-
-        if response.status_code != 200:
-            raise RuntimeError(f"Ollama embed failed: {response.status_code}")
-
+        response.raise_for_status()
         data = response.json()
         embeddings = data.get("embeddings", [])
 
-        if len(embeddings) < 2:
-            raise RuntimeError("Insufficient embeddings returned")
-
-    # Compute cosine similarity between query and each passage
     query_emb = embeddings[0]
-    scores: list[float] = []
-
-    for passage_emb in embeddings[1:]:
-        score = _cosine_similarity(query_emb, passage_emb)
-        scores.append(score)
-
-    return scores
+    return [_cosine_similarity(query_emb, e) for e in embeddings[1:]]
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -139,8 +176,4 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
-
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-
-    return dot / (norm_a * norm_b)
+    return dot / (norm_a * norm_b) if norm_a > 0 and norm_b > 0 else 0.0

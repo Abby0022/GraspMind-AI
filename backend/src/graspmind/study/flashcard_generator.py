@@ -108,14 +108,21 @@ async def generate_flashcards(
             "role": "user",
             "content": GENERATE_PROMPT.format(
                 num_cards=num_cards,
-                context=context[:8000],
+                context=context[:100000],  # Increased for 2026-era large context models
                 difficulty_instruction=difficulty_instruction,
             ),
         },
     ]
 
     try:
-        result = await complete_chat(prompt_messages, user_id=user_id)
+        # Use high reasoning effort for complex pedagogical tasks
+        result = await complete_chat(
+            prompt_messages, 
+            user_id=user_id,
+            thinking_level="HIGH",
+            reasoning_effort="high",
+            temperature=0.2
+        )
         result = result.strip()
 
         # Handle markdown code blocks

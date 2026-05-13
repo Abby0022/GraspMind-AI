@@ -105,8 +105,39 @@ export const api = {
     members: (classId: string) =>
       request<ClassMember[]>(`/classes/${classId}/members`),
 
+    updateMember: (classId: string, studentId: string, data: { section_id?: string | null }) =>
+      request(`/classes/${classId}/members/${studentId}?section_id=${data.section_id || ""}`, { method: "PATCH" }),
+
     analytics: (classId: string) =>
       request<ClassAnalytics>(`/classes/${classId}/analytics`),
+
+    archive: (classId: string) =>
+      request<ClassDetail>(`/classes/${classId}/archive`, { method: "PATCH" }),
+
+    sections: {
+      create: (classId: string, data: { name: string; room?: string; schedule?: string }) =>
+        request<CourseSection>(`/classes/${classId}/sections`, {
+          method: "POST",
+          body: JSON.stringify(data),
+        }),
+      delete: (classId: string, sectionId: string) =>
+        request(`/classes/${classId}/sections/${sectionId}`, { method: "DELETE" }),
+    },
+
+    clone: (classId: string) =>
+      request<ClassDetail>(`/classes/${classId}/clone`, { method: "POST" }),
+
+    staff: {
+      list: (classId: string) =>
+        request<CourseStaff[]>(`/classes/${classId}/staff`),
+      add: (classId: string, email: string, role: string = "ta", permissions?: any) =>
+        request(`/classes/${classId}/staff?email=${encodeURIComponent(email)}&role=${role}`, {
+          method: "POST",
+          body: JSON.stringify(permissions),
+        }),
+      remove: (classId: string, userId: string) =>
+        request(`/classes/${classId}/staff/${userId}`, { method: "DELETE" }),
+    },
   },
 
   // -- Teacher: Assignments ------------------------------------
@@ -125,6 +156,9 @@ export const api = {
         description?: string;
         notebook_id?: string;
         due_date?: string;
+        is_proctored?: boolean;
+        time_limit_mins?: number;
+        require_fullscreen?: boolean;
       },
     ) =>
       request<Assignment>(`/classes/${classId}/assignments`, {
@@ -134,15 +168,29 @@ export const api = {
 
     submit: (
       assignmentId: string,
-      data: { status: "pending" | "in_progress" | "submitted"; score?: number },
+      data: { status: "pending" | "in_progress" | "submitted"; score?: number; focus_lost_count?: number },
     ) =>
       request(`/assignments/${assignmentId}/submit`, {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
 
+    recordIntegrityAlert: (submissionId: string, eventType: string, metadata?: any) =>
+      request(`/assignments/submissions/${submissionId}/alert`, {
+        method: "POST",
+        body: JSON.stringify({ event_type: eventType, metadata }),
+      }),
+
     submissions: (assignmentId: string) =>
       request(`/assignments/${assignmentId}/submissions`),
+  },
+
+  // -- Notifications -------------------------------------------
+  notifications: {
+    list: () => request<Notification[]>("/notifications"),
+    markRead: (id: string) => request<Notification>(`/notifications/${id}`, { method: "PATCH" }),
+    readAll: () => request("/notifications/read-all", { method: "POST" }),
+    delete: (id: string) => request(`/notifications/${id}`, { method: "DELETE" }),
   },
 };
 
@@ -152,12 +200,41 @@ export interface ClassListItem {
   id: string;
   name: string;
   subject: string | null;
+  department: string | null;
+  is_archived: boolean;
   created_at: string;
 }
 
 export interface ClassDetail extends ClassListItem {
   teacher_id: string;
   invite_code: string;
+  course_sections?: CourseSection[];
+}
+
+export interface CourseSection {
+  id: string;
+  class_id: string;
+  name: string;
+  room: string | null;
+  schedule: string | null;
+  created_at: string;
+}
+
+export interface CourseStaff {
+  id: string;
+  class_id: string;
+  user_id: string;
+  role: "ta" | "teacher" | "admin";
+  permissions: {
+    can_manage_roster: boolean;
+    can_manage_assignments: boolean;
+    can_archive: boolean;
+  };
+  created_at: string;
+  users?: {
+    name: string;
+    email: string;
+  };
 }
 
 export interface ClassMember {
@@ -166,6 +243,7 @@ export interface ClassMember {
   email: string;
   avg_mastery: number;
   joined_at: string;
+  section_id: string | null;
 }
 
 export interface ClassAnalytics {
@@ -193,11 +271,27 @@ export interface Assignment {
   description: string | null;
   type: "read" | "quiz" | "flashcard";
   due_date: string | null;
+  is_proctored: boolean;
+  time_limit_mins: number | null;
+  require_fullscreen: boolean;
   created_at: string;
   my_submission?: {
+    id: string;
     status: string;
     score: number | null;
+    focus_lost_count: number;
     submitted_at: string | null;
   } | null;
 }
 
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: "info" | "assignment" | "mastery" | "system";
+  link: string | null;
+  is_read: boolean;
+  created_at: string;
+}

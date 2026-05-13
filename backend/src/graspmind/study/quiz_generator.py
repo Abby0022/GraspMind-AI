@@ -131,7 +131,13 @@ Return ONLY the JSON array, no other text."""
     ]
 
     try:
-        response = await complete_chat(messages, user_id=user_id)
+        response = await complete_chat(
+            messages, 
+            user_id=user_id,
+            thinking_level="HIGH",
+            reasoning_effort="high",
+            temperature=0.1
+        )
 
         if "[Error" in response or "RATE_LIMIT" in response:
             raise ValueError("RATE_LIMIT")

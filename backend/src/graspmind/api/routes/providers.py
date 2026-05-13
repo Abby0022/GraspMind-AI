@@ -33,6 +33,8 @@ class ProviderConfigRequest(BaseModel):
     model: str = Field("", description="Model override (empty = use default)")
     base_url: str = Field("", description="Custom base URL (for 'custom' provider)")
     is_default: bool = Field(False, description="Set as the default provider")
+    temperature: float = Field(0.7, description="Model temperature (0.0 to 1.0)")
+    max_tokens: int = Field(2048, description="Max tokens for response")
 
 
 class ProviderTestRequest(BaseModel):
@@ -52,6 +54,8 @@ class ProviderConfigResponse(BaseModel):
     api_key_masked: str
     is_active: bool
     is_default: bool
+    temperature: float
+    max_tokens: int
     last_used_at: str | None
     last_error: str | None
     created_at: str
@@ -108,6 +112,8 @@ async def list_user_providers(
             api_key_masked=masked,
             is_active=row.get("is_active", True),
             is_default=row.get("is_default", False),
+            temperature=row.get("temperature", 0.7),
+            max_tokens=row.get("max_tokens", 2048),
             last_used_at=row.get("last_used_at"),
             last_error=row.get("last_error"),
             created_at=row.get("created_at", ""),
@@ -173,8 +179,8 @@ async def upsert_user_provider(
                 detail=f"API key test failed: {test_result['error']}",
             )
 
-    # 5. Encrypt the key
-    encrypted = ""
+    # 5. Handle Key Encryption (Preserve existing if empty)
+    encrypted = None
     if body.api_key:
         try:
             encrypted = encrypt_key(body.api_key)
@@ -183,6 +189,23 @@ async def upsert_user_provider(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Key encryption failed: {str(e)}",
             )
+    else:
+        # Check if key already exists in DB to prevent overwriting with empty
+        existing = await (
+            supabase.table("user_providers")
+            .select("api_key_enc")
+            .eq("user_id", user.id)
+            .eq("provider", body.provider)
+            .execute()
+        )
+        if existing.data:
+            encrypted = existing.data[0]["api_key_enc"]
+
+    if not encrypted and spec.key_required:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"API key is required for {spec.name}.",
+        )
 
     # 6. If setting as default, unset other defaults
     if body.is_default:
@@ -203,6 +226,8 @@ async def upsert_user_provider(
         "api_key_enc": encrypted,
         "is_active": True,
         "is_default": body.is_default,
+        "temperature": body.temperature,
+        "max_tokens": body.max_tokens,
         "last_error": None,
         "updated_at": now,
     }
@@ -267,9 +292,28 @@ async def test_provider_key(
     if not spec:
         raise HTTPException(status_code=400, detail=f"Unknown provider '{body.provider}'")
 
+    api_key = body.api_key
+    if not api_key:
+        # Try to use existing key from DB
+        existing = await (
+            supabase.table("user_providers")
+            .select("api_key_enc")
+            .eq("user_id", user.id)
+            .eq("provider", body.provider)
+            .execute()
+        )
+        if existing.data and existing.data[0]["api_key_enc"]:
+            try:
+                from graspmind.security.vault import decrypt_key
+                api_key = decrypt_key(existing.data[0]["api_key_enc"])
+            except Exception:
+                raise HTTPException(status_code=400, detail="Failed to decrypt existing key for testing")
+        else:
+            raise HTTPException(status_code=400, detail="No key provided and no existing key found")
+
     result = await _test_key(
         provider_slug=body.provider,
-        api_key=body.api_key,
+        api_key=api_key,
         model=body.model or spec.default_model,
         base_url=body.base_url or spec.base_url,
         spec=spec,

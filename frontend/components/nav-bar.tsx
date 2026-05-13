@@ -1,8 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { Clock, GraduationCap, LogOut, Settings, Target } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { ThemeToggle } from "./theme-toggle";
+import { NotificationBell } from "./notification-bell";
 
 interface NavBarProps {
   user: {
@@ -25,7 +27,14 @@ export function NavBar({ user, onLogout }: NavBarProps) {
           onClick={() => router.push("/dashboard")}
         >
           <div className="w-9 h-9 flex items-center justify-center group-hover:scale-105 transition-transform duration-300">
-            <img src="/grasp.svg" alt="GraspMind AI Logo" className="w-8 h-8 object-contain dark:invert" />
+            <Image 
+              src="/grasp.svg" 
+              alt="GraspMind AI Logo" 
+              width={32} 
+              height={32} 
+              priority
+              className="object-contain dark:invert" 
+            />
           </div>
           <span className="font-bold text-[15px] text-foreground tracking-tight">
             GraspMind AI
@@ -78,7 +87,7 @@ export function NavBar({ user, onLogout }: NavBarProps) {
               }`}
             >
               <GraduationCap className="w-4 h-4" />
-              Teaching
+              Faculty
             </button>
           ) : (
             <button
@@ -90,7 +99,7 @@ export function NavBar({ user, onLogout }: NavBarProps) {
               }`}
             >
               <GraduationCap className="w-4 h-4" />
-              Classes
+              Courses
             </button>
           )}
         </nav>
@@ -98,6 +107,8 @@ export function NavBar({ user, onLogout }: NavBarProps) {
 
       {/* Right Actions */}
       <div className="flex items-center gap-4">
+        <NotificationBell />
+        
         <button
           onClick={() => router.push("/settings")}
           className="w-9 h-9 rounded-full flex items-center justify-center text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"

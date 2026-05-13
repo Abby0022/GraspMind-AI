@@ -87,12 +87,12 @@ export default function TeacherDashboard() {
             <div className="flex items-center gap-2 mb-1">
               <GraduationCap className="w-5 h-5 text-primary" />
               <span className="text-[12px] font-semibold uppercase tracking-widest text-muted-foreground">
-                Teacher Portal
+                Faculty Portal
               </span>
             </div>
-            <h1 className="text-3xl font-bold text-foreground">My Classes</h1>
+            <h1 className="text-3xl font-bold text-foreground">My Courses</h1>
             <p className="text-muted-foreground text-[14px] mt-1">
-              Manage your classes, track student progress, and create assignments.
+              Manage your courses, track student performance, and distribute academic materials.
             </p>
           </div>
 
@@ -102,14 +102,14 @@ export default function TeacherDashboard() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold hover:opacity-90 transition-all shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            New Class
+            New Course
           </button>
         </div>
 
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
           {[
-            { label: "Total Classes", value: classes.length, icon: BookOpen },
+            { label: "Total Courses", value: classes.length, icon: BookOpen },
             {
               label: "Total Students",
               value: "—",
@@ -146,9 +146,9 @@ export default function TeacherDashboard() {
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <GraduationCap className="w-8 h-8 text-primary" />
             </div>
-            <h2 className="text-[18px] font-bold text-foreground mb-2">No classes yet</h2>
+            <h2 className="text-[18px] font-bold text-foreground mb-2">No courses yet</h2>
             <p className="text-muted-foreground text-[14px] max-w-xs">
-              Create your first class and share the invite code with your students.
+              Create your first course and share the enrollment code with your students.
             </p>
             <button
               type="button"
@@ -156,7 +156,7 @@ export default function TeacherDashboard() {
               className="mt-6 flex items-center gap-2 px-5 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold hover:opacity-90 transition-all"
             >
               <Plus className="w-4 h-4" />
-              Create your first class
+              Create your first course
             </button>
           </div>
         ) : (
@@ -176,7 +176,7 @@ export default function TeacherDashboard() {
         >
           <div className="w-full max-w-md rounded-2xl border border-border/50 bg-background shadow-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
-              <h2 className="font-bold text-[15px] text-foreground">Create a Class</h2>
+              <h2 className="font-bold text-[15px] text-foreground">Create a Course</h2>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
@@ -188,13 +188,13 @@ export default function TeacherDashboard() {
             <form onSubmit={createClass} className="p-6 space-y-4">
               <div>
                 <label className="block text-[12px] font-semibold text-muted-foreground mb-1.5 uppercase tracking-wide">
-                  Class Name *
+                  Course Name *
                 </label>
                 <input
                   type="text"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="e.g. Grade 10 Physics"
+                  placeholder="e.g. CS101 Introduction to AI"
                   maxLength={120}
                   autoFocus
                   className="w-full px-3 py-2.5 rounded-xl border border-border/50 bg-muted/30 text-[14px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
@@ -208,7 +208,7 @@ export default function TeacherDashboard() {
                   type="text"
                   value={newSubject}
                   onChange={(e) => setNewSubject(e.target.value)}
-                  placeholder="e.g. Physics"
+                  placeholder="e.g. Computer Science"
                   maxLength={100}
                   className="w-full px-3 py-2.5 rounded-xl border border-border/50 bg-muted/30 text-[14px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all"
                 />
@@ -226,7 +226,7 @@ export default function TeacherDashboard() {
                   disabled={creating || !newName.trim()}
                   className="flex-1 px-4 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold hover:opacity-90 disabled:opacity-40 transition-all"
                 >
-                  {creating ? "Creating…" : "Create Class"}
+                  {creating ? "Creating…" : "Create Course"}
                 </button>
               </div>
             </form>

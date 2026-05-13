@@ -115,19 +115,19 @@ export default function MyClassesPage() {
     <div className="min-h-screen bg-background">
       <NavBar user={user} onLogout={async () => { await api.auth.logout(); setUser(null); router.push("/"); }} />
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-8 pb-16">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 pt-28 pb-16">
         {/* Header */}
         <div className="flex items-start justify-between mb-8">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <GraduationCap className="w-5 h-5 text-primary" />
               <span className="text-[12px] font-semibold uppercase tracking-widest text-muted-foreground">
-                My Classes
+                Faculty Portal
               </span>
             </div>
-            <h1 className="text-3xl font-bold text-foreground">Enrolled Classes</h1>
+            <h1 className="text-3xl font-bold text-foreground">My Courses</h1>
             <p className="text-[14px] text-muted-foreground mt-1">
-              View assignments, track progress, and submit completed work.
+              View assignments, track progress, and access lecture materials.
             </p>
           </div>
 
@@ -137,7 +137,7 @@ export default function MyClassesPage() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold hover:opacity-90 transition-all shadow-sm"
           >
             <Plus className="w-4 h-4" />
-            Join Class
+            Enroll in Course
           </button>
         </div>
 
@@ -150,7 +150,7 @@ export default function MyClassesPage() {
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
               <GraduationCap className="w-8 h-8 text-primary" />
             </div>
-            <h2 className="text-[18px] font-bold text-foreground mb-2">No classes yet</h2>
+            <h2 className="text-[18px] font-bold text-foreground mb-2">No courses yet</h2>
             <p className="text-[14px] text-muted-foreground max-w-xs">
               Ask your teacher for an invite code to join their class.
             </p>
@@ -191,12 +191,12 @@ export default function MyClassesPage() {
               {!selectedClass ? (
                 <div className="flex flex-col items-center justify-center h-full py-16 text-center">
                   <ClipboardList className="w-8 h-8 text-muted-foreground/30 mb-2" />
-                  <p className="text-[13px] text-muted-foreground">Select a class to view assignments</p>
+                  <p className="text-[13px] text-muted-foreground">Select a course to view assignments</p>
                 </div>
               ) : assignments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-16 text-center">
                   <ClipboardList className="w-8 h-8 text-muted-foreground/30 mb-2" />
-                  <p className="text-[13px] text-muted-foreground">No assignments yet in this class</p>
+                  <p className="text-[13px] text-muted-foreground">No assignments yet in this course</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -234,15 +234,26 @@ export default function MyClassesPage() {
                             )}
                           </div>
                         </div>
-                        {!done && (
-                          <button
-                            type="button"
-                            onClick={() => markSubmitted(a.id)}
-                            className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-border/50 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
-                          >
-                            Mark done
-                          </button>
-                        )}
+                        <div className="flex flex-col sm:flex-row items-center gap-2 self-end sm:self-center shrink-0">
+                          {a.notebook_id && !done && (
+                            <button
+                              type="button"
+                              onClick={() => router.push(`/notebook/${a.notebook_id}?assignment=${a.id}`)}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-primary text-background hover:opacity-90 transition-all flex items-center gap-1.5"
+                            >
+                              {a.type === "read" ? "Open Material" : "Start Assessment"}
+                            </button>
+                          )}
+                          {!done && (
+                            <button
+                              type="button"
+                              onClick={() => markSubmitted(a.id)}
+                              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border border-border/50 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                            >
+                              Mark done
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -261,7 +272,7 @@ export default function MyClassesPage() {
         >
           <div className="w-full max-w-sm rounded-2xl border border-border/50 bg-background shadow-2xl">
             <div className="flex items-center justify-between px-6 py-4 border-b border-border/50">
-              <h2 className="font-bold text-[15px] text-foreground">Join a Class</h2>
+              <h2 className="font-bold text-[15px] text-foreground">Join a Course</h2>
               <button
                 type="button"
                 onClick={() => setShowJoin(false)}
@@ -279,7 +290,7 @@ export default function MyClassesPage() {
                   type="text"
                   value={joiningCode}
                   onChange={(e) => setJoiningCode(e.target.value)}
-                  placeholder="Paste code from your teacher"
+                  placeholder="e.g. CS101-FALL24"
                   autoFocus
                   className="w-full px-3 py-2.5 rounded-xl border border-border/50 bg-muted/30 text-[14px] font-mono text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/40 transition-all tracking-wider"
                 />
@@ -289,7 +300,7 @@ export default function MyClassesPage() {
                 disabled={joining || !joiningCode.trim()}
                 className="w-full py-2.5 rounded-xl bg-foreground text-background text-[13px] font-semibold hover:opacity-90 disabled:opacity-40 transition-all"
               >
-                {joining ? "Joining…" : "Join Class"}
+                {joining ? "Joining…" : "Join Course"}
               </button>
             </form>
           </div>

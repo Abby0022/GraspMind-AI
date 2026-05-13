@@ -15,7 +15,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import AsyncClient
 
-from graspmind.api.deps import AuthUser, ServiceSupabase, TeacherUser, get_service_supabase
+from graspmind.api.deps import AuthUser, ServiceSupabase, TeacherUser, get_service_supabase, verify_faculty_access
 from graspmind.models.schemas import AssignmentCreate, AssignmentResponse, SubmissionResponse, SubmissionUpdate
 from graspmind.security.input_sanitizer import sanitize_text
 
@@ -38,30 +38,25 @@ async def create_assignment(
     supabase: ServiceSupabase,
 ):
     """Create an assignment for a class (teacher only)."""
-    # Verify teacher owns this class
-    cls = (
-        await supabase.table("classes")
-        .select("id")
-        .eq("id", str(class_id))
-        .eq("teacher_id", teacher.id)
-        .single()
-        .execute()
-    )
-    if not cls.data:
-        raise HTTPException(status_code=404, detail="Class not found")
+    # ── SECURITY: Verify Faculty Access (Owner or TA) ─────────────────
+    await verify_faculty_access(class_id, teacher.id, supabase)
 
-    # If a notebook is linked, verify teacher owns it
+    # Fetch course name for the notification message
+    cls_res = await supabase.table("classes").select("name").eq("id", str(class_id)).single().execute()
+    course_name = cls_res.data.get("name", "your course") if cls_res.data else "your course"
+
+    # If a notebook is linked, verify access
     if body.notebook_id:
-        nb = (
-            await supabase.table("notebooks")
-            .select("id")
-            .eq("id", str(body.notebook_id))
-            .eq("user_id", teacher.id)
-            .single()
-            .execute()
-        )
+        # Check ownership or share
+        nb = await supabase.table("notebooks").select("id, user_id").eq("id", str(body.notebook_id)).maybe_single().execute()
         if not nb.data:
-            raise HTTPException(status_code=404, detail="Notebook not found or not owned by you")
+            raise HTTPException(status_code=404, detail="Notebook not found")
+        
+        # If not the owner, check if it's shared with this faculty member
+        if nb.data["user_id"] != teacher.id:
+            share = await supabase.table("notebook_shares").select("id").eq("notebook_id", str(body.notebook_id)).eq("user_id", teacher.id).maybe_single().execute()
+            if not share.data:
+                raise HTTPException(status_code=403, detail="You do not have access to this notebook to assign it.")
 
     data = {
         "class_id": str(class_id),
@@ -70,12 +65,62 @@ async def create_assignment(
         "type": body.type,
         "notebook_id": str(body.notebook_id) if body.notebook_id else None,
         "due_date": body.due_date.isoformat() if body.due_date else None,
+        "is_proctored": body.is_proctored,
+        "time_limit_mins": body.time_limit_mins,
+        "require_fullscreen": body.require_fullscreen,
     }
 
     result = await supabase.table("assignments").insert(data).select().single().execute()
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to create assignment")
-    return result.data
+    
+    assignment = result.data
+    
+    # ── BROADCAST: Notify Class Members ──────────────────────────────
+    try:
+        # 1. Fetch all members
+        members = await supabase.table("class_members").select("student_id").eq("class_id", str(class_id)).execute()
+        student_ids = [m["student_id"] for m in (members.data or [])]
+        
+        if student_ids:
+            # 2. Prepare notifications
+            # Link to the class page or specifically to the notebook if it's a read task
+            link = f"/classes"
+            if assignment.get("notebook_id"):
+                link = f"/dashboard?notebook={assignment['notebook_id']}"
+                
+            notifications = [
+                {
+                    "user_id": sid,
+                    "title": f"New Assignment: {assignment['title']}",
+                    "message": f"A new {assignment['type']} assignment has been posted in {course_name}.",
+                    "type": "assignment",
+                    "link": link,
+                    "assignment_id": str(assignment["id"]),
+                    "class_id": str(class_id),
+                }
+                for sid in student_ids
+            ]
+            
+            # 3. Batch insert
+            await supabase.table("notifications").insert(notifications).execute()
+            logger.info("Broadcasted notification for assignment %s to %d students", assignment["id"], len(student_ids))
+            
+    except Exception as exc:
+        # Don't fail the assignment creation if notification fails
+        logger.warning("Failed to broadcast assignment notification: %s", exc)
+
+    # ── SECURITY: Audit Log ───────────────────────────────────────────
+    try:
+        await supabase.table("audit_logs").insert({
+            "user_id": teacher.id,
+            "event_type": "assignment_created",
+            "action": f"POST /api/v1/classes/{class_id}/assignments",
+            "metadata": {"assignment_id": assignment["id"], "class_id": str(class_id)}
+        }).execute()
+    except Exception: pass
+
+    return assignment
 
 
 @router.get("/assignments/{assignment_id}/submissions")
@@ -84,28 +129,14 @@ async def list_submissions(
     teacher: TeacherUser,
     supabase: ServiceSupabase,
 ):
-    """List all student submissions for an assignment (teacher only)."""
-    # Verify the assignment belongs to one of this teacher's classes
-    assignment = (
-        await supabase.table("assignments")
-        .select("id, class_id")
-        .eq("id", str(assignment_id))
-        .single()
-        .execute()
-    )
-    if not assignment.data:
+    """List all submissions for an assignment (faculty only)."""
+    # 1. Get assignment and class_id
+    a_res = await supabase.table("assignments").select("class_id").eq("id", str(assignment_id)).single().execute()
+    if not a_res.data:
         raise HTTPException(status_code=404, detail="Assignment not found")
-
-    cls = (
-        await supabase.table("classes")
-        .select("id")
-        .eq("id", assignment.data["class_id"])
-        .eq("teacher_id", teacher.id)
-        .single()
-        .execute()
-    )
-    if not cls.data:
-        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # 2. Verify faculty access to that class
+    await verify_faculty_access(a_res.data["class_id"], teacher.id, supabase)
 
     submissions = (
         await supabase.table("assignment_submissions")
@@ -132,7 +163,7 @@ async def list_assignments(
     """
     cls = (
         await supabase.table("classes")
-        .select("id, teacher_id")
+        .select("id, teacher_id, is_archived")
         .eq("id", str(class_id))
         .single()
         .execute()
@@ -142,6 +173,9 @@ async def list_assignments(
 
     is_teacher = cls.data["teacher_id"] == user.id
     if not is_teacher:
+        if cls.data.get("is_archived"):
+            raise HTTPException(status_code=403, detail="This class has been archived")
+        
         membership = (
             await supabase.table("class_members")
             .select("class_id")
@@ -157,7 +191,7 @@ async def list_assignments(
         await supabase.table("assignments")
         .select("*")
         .eq("class_id", str(class_id))
-        .order("due_date", desc=False, nulls_first=False)
+        .order("due_date", desc=False)
         .execute()
     )
 
@@ -203,7 +237,7 @@ async def get_assignment(
 
     cls = (
         await supabase.table("classes")
-        .select("teacher_id")
+        .select("teacher_id, is_archived")
         .eq("id", assignment.data["class_id"])
         .single()
         .execute()
@@ -213,6 +247,8 @@ async def get_assignment(
 
     is_teacher = cls.data["teacher_id"] == user.id
     if not is_teacher:
+        if cls.data.get("is_archived"):
+            raise HTTPException(status_code=403, detail="This class has been archived")
         membership = (
             await supabase.table("class_members")
             .select("class_id")
@@ -252,6 +288,11 @@ async def submit_assignment(
     if not assignment.data:
         raise HTTPException(status_code=404, detail="Assignment not found")
 
+    # Verify class is not archived
+    cls = await supabase.table("classes").select("is_archived").eq("id", assignment.data["class_id"]).single().execute()
+    if cls.data and cls.data.get("is_archived"):
+        raise HTTPException(status_code=403, detail="Cannot submit work to an archived class")
+
     membership = (
         await supabase.table("class_members")
         .select("class_id")
@@ -270,6 +311,7 @@ async def submit_assignment(
         "student_id": user.id,
         "status": body.status,
         "score": body.score,
+        "focus_lost_count": body.focus_lost_count,
         "submitted_at": now_iso,
     }
 
@@ -283,3 +325,27 @@ async def submit_assignment(
     if not result.data:
         raise HTTPException(status_code=500, detail="Failed to save submission")
     return result.data
+
+
+@router.post("/submissions/{submission_id}/alert")
+async def record_integrity_alert_api(
+    submission_id: UUID,
+    event_type: str,
+    user: AuthUser,
+    supabase: ServiceSupabase,
+    metadata: dict | None = None,
+):
+    """Record an integrity alert (e.g. tab switch) during a proctored assessment."""
+    # Verify submission belongs to user
+    sub = await supabase.table("assignment_submissions").select("student_id").eq("id", str(submission_id)).single().execute()
+    if not sub.data or sub.data["student_id"] != user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Call RPC function to log and update counters
+    await supabase.rpc("record_integrity_alert", {
+        "p_submission_id": str(submission_id),
+        "p_event_type": event_type,
+        "p_metadata": metadata or {}
+    }).execute()
+    
+    return {"status": "recorded"}

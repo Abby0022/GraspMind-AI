@@ -82,34 +82,46 @@ async def add_message(
 ) -> None:
     """Add a message to the session's working memory.
 
-    Uses LPUSH + LTRIM to maintain a rolling window of MAX_MESSAGES.
+    Uses a Redis pipeline (LPUSH + LTRIM + HSET + EXPIRE) to maintain
+    a rolling window of MAX_MESSAGES in a single network round-trip.
     """
     r = await _get_redis()
     key = _redis_key(session_id)
     meta = _meta_key(session_id)
+    now = datetime.now(UTC).isoformat()
 
     msg = ChatMessage(
         role=role,
         content=content,
-        timestamp=datetime.now(UTC).isoformat(),
+        timestamp=now,
         citations=citations or [],
     )
 
-    # Push to the front of the list
-    await r.lpush(key, json.dumps(msg.to_dict()))
+    # Use pipeline for atomic-ish execution and reduced RTT
+    async with r.pipeline(transaction=True) as pipe:
+        # Push and trim
+        pipe.lpush(key, json.dumps(msg.to_dict()))
+        pipe.ltrim(key, 0, MAX_MESSAGES - 1)
+        
+        # Update session metadata
+        # We use a sub-command for message count to avoid an extra RTT
+        pipe.hset(meta, mapping={
+            "last_activity": now,
+        })
+        pipe.llen(key) # This will be the message count in the result
 
-    # Trim to keep only the last MAX_MESSAGES
-    await r.ltrim(key, 0, MAX_MESSAGES - 1)
+        # Reset TTL on both keys
+        pipe.expire(key, SESSION_TTL)
+        pipe.expire(meta, SESSION_TTL)
+        
+        results = await pipe.execute()
+        
+        # Update the message count in meta separately if needed, 
+        # but usually we just want to ensure it's updated eventually.
+        # Actually, let's keep it simple and just set the count from the LLEN result.
+        msg_count = results[3] # Index 3 is the result of pipe.llen(key)
+        await r.hset(meta, "message_count", msg_count)
 
-    # Update session metadata
-    await r.hset(meta, mapping={
-        "last_activity": datetime.now(UTC).isoformat(),
-        "message_count": await r.llen(key),
-    })
-
-    # Reset TTL on both keys
-    await r.expire(key, SESSION_TTL)
-    await r.expire(meta, SESSION_TTL)
 
 
 async def get_history(

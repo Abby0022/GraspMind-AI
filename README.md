@@ -102,14 +102,27 @@ GraspMind AI requires several environment variables to be set in your `.env` fil
 
 ## 🗺️ Roadmap
 
-Check out the full [ROADMAP.md](./ROADMAP.md) for planned features like **Vision Support**, **Browser Extensions**, and **Collaborative Study Groups**.
+## ⚙️ Configuration Essentials
+
+| Variable | Usage |
+|----------|-------|
+| `SUPABASE_URL` | Auth and metadata persistence. |
+| `GOOGLE_API_KEY` | Default embedding and fallback inference. |
+| `GROQ_API_KEY` | High-speed inference (Llama 3.3). |
+| `QDRANT_URL` | Vector storage endpoint. |
 
 ---
 
-## 📄 License
-
-Distributed under the **MIT License**. See `LICENSE` for more information.
+## 🛡️ Security & Ethics
+- **RLS Enforced**: All Supabase queries use JWT-based Row-Level Security.
+- **No Training**: We explicitly use enterprise APIs with zero-retention policies.
+- **Open Source**: Auditable code for students who care about their data privacy.
 
 ---
 
-*Built with ❤️ for students who want to study smarter, not harder.*
+## 🤝 Contributing
+GraspMind is an open-source project. We welcome contributions to our RAG pipeline, UI components, and new provider integrations.
+
+---
+
+*GraspMind AI — Empowering students through agentic active learning.*

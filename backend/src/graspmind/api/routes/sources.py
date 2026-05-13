@@ -4,9 +4,12 @@ Handles file uploads with MIME validation, size limits, and
 async processing via FastAPI BackgroundTasks.
 """
 
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from supabase import AsyncClient
 
@@ -19,39 +22,51 @@ from graspmind.security.rate_limiter import RateLimiter
 router = APIRouter(prefix="/notebooks/{notebook_id}/sources", tags=["Sources"])
 
 
-async def _verify_notebook_ownership(
-    notebook_id: str, user_id: str, supabase: AsyncClient
-) -> None:
-    """Verify the notebook belongs to the current user or is shared with them."""
+async def _verify_notebook_access(
+    notebook_id: str, user_id: str, supabase: AsyncClient, require_write: bool = False
+) -> str:
+    """Verify notebook access and return the user's role ('owner', 'editor', 'viewer')."""
     # 1. Check direct ownership
-    result = (
-        await supabase.table("notebooks")
-        .select("user_id")
-        .eq("id", notebook_id)
-        .execute()
-    )
-    if not result.data:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Notebook not found",
-        )
-
-    if result.data[0]["user_id"] == user_id:
-        return
+    nb = await supabase.table("notebooks").select("user_id").eq("id", notebook_id).single().execute()
+    if not nb.data:
+        raise HTTPException(status_code=404, detail="Notebook not found")
+    
+    if nb.data["user_id"] == user_id:
+        return "owner"
 
     # 2. Check if shared with user
-    share_result = (
+    share = (
         await supabase.table("notebook_shares")
-        .select("id")
+        .select("role")
         .eq("notebook_id", notebook_id)
         .eq("user_id", user_id)
         .execute()
     )
-    if not share_result.data:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not have access to this notebook",
-        )
+    if share.data:
+        role = share.data[0]["role"]
+        if require_write and role == "viewer":
+            raise HTTPException(status_code=403, detail="Write access denied")
+        return role
+
+    # 3. Check if notebook is assigned in any of the user's active classes (Read Only)
+    if not require_write:
+        assigned = await supabase.table("assignments").select("class_id").eq("notebook_id", str(notebook_id)).execute()
+        if assigned.data:
+            class_ids = [a["class_id"] for a in assigned.data]
+            active_classes = await supabase.table("classes").select("id").in_("id", class_ids).eq("is_archived", False).execute()
+            active_ids = [c["id"] for c in (active_classes.data or [])]
+            if active_ids:
+                membership = (
+                    await supabase.table("class_members")
+                    .select("class_id")
+                    .in_("class_id", active_ids)
+                    .eq("student_id", user_id)
+                    .execute()
+                )
+                if membership.data:
+                    return "viewer"
+
+    raise HTTPException(status_code=403, detail="Access denied")
 
 
 class IngestTextRequest(BaseModel):
@@ -77,7 +92,7 @@ async def upload_source(
     Validates file type and size, stores in Supabase Storage,
     and kicks off ingestion as a FastAPI BackgroundTask.
     """
-    await _verify_notebook_ownership(notebook_id, user.id, supabase)
+    await _verify_notebook_access(notebook_id, user.id, supabase, require_write=True)
 
     # Validate file
     if not file.filename:
@@ -165,7 +180,7 @@ async def ingest_text(
     supabase: AsyncClient = Depends(get_user_supabase),
 ):
     """Ingest raw text directly (e.g., from bookmarklet)."""
-    await _verify_notebook_ownership(notebook_id, user.id, supabase)
+    await _verify_notebook_access(notebook_id, user.id, supabase, require_write=True)
 
     # Sanitize content before uploading as text file
     safe_content = sanitize_text(body.content)
@@ -222,27 +237,23 @@ async def ingest_text(
     return source
 
 
-def _run_ingestion(
+async def _run_ingestion(
     source_id: str,
     notebook_id: str,
     user_id: str,
     file_path: str,
     file_name: str,
 ) -> None:
-    """Run document ingestion synchronously in a background thread."""
-    import asyncio
-    import logging
-    logger = logging.getLogger(__name__)
+    """Run document ingestion asynchronously as a background task."""
     try:
         from graspmind.workers.ingestion import ingest_document
-        # ingest_document is an async function — run it in a new event loop
-        asyncio.run(ingest_document(
+        await ingest_document(
             source_id=source_id,
             notebook_id=notebook_id,
             user_id=user_id,
             file_path=file_path,
             file_name=file_name,
-        ))
+        )
     except Exception as exc:
         logger.exception("Background ingestion failed for source %s: %s", source_id, exc)
 
@@ -254,7 +265,7 @@ async def list_sources(
     supabase: AsyncClient = Depends(get_user_supabase),
 ):
     """List all sources in a notebook."""
-    await _verify_notebook_ownership(notebook_id, user.id, supabase)
+    await _verify_notebook_access(notebook_id, user.id, supabase)
 
     result = (
         await supabase.table("sources")
@@ -274,7 +285,7 @@ async def get_source(
     supabase: AsyncClient = Depends(get_user_supabase),
 ):
     """Get a specific source."""
-    await _verify_notebook_ownership(notebook_id, user.id, supabase)
+    await _verify_notebook_access(notebook_id, user.id, supabase)
 
     result = (
         await supabase.table("sources")
@@ -297,7 +308,7 @@ async def delete_source(
     supabase: AsyncClient = Depends(get_user_supabase),
 ):
     """Delete a source and its storage file."""
-    await _verify_notebook_ownership(notebook_id, user.id, supabase)
+    await _verify_notebook_access(notebook_id, user.id, supabase, require_write=True)
 
     # Get source to find storage path
     source_result = (
@@ -318,6 +329,15 @@ async def delete_source(
             await supabase.storage.from_("sources").remove([file_path])
         except Exception:
             pass  # Best-effort storage cleanup
+
+    # ── PRIVACY: Cleanup Vectors ─────────────────────────────────────
+    # Ensure deleted data is wiped from the vector database (Qdrant)
+    try:
+        from graspmind.rag.vector_store import delete_source_vectors
+        await delete_source_vectors(user_id=user.id, source_id=source_id)
+    except Exception as exc:
+        logger.error("Failed to delete vectors for source %s: %s", source_id, exc)
+
 
     # Delete from database (cascades to chunks)
     await supabase.table("sources").delete().eq("id", source_id).execute()

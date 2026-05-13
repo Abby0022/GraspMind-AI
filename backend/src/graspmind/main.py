@@ -19,10 +19,12 @@ from graspmind.api.routes import (
     auth,
     chat,
     classes,
+    compliance,
     flashcards,
     history,
     knowledge,
     notebooks,
+    notifications,
     providers,
     quizzes,
     sessions,
@@ -90,6 +92,8 @@ def create_app() -> FastAPI:
     app.include_router(knowledge.router, prefix=api_prefix)
     app.include_router(flashcards.router, prefix=api_prefix)
     app.include_router(providers.router, prefix=api_prefix)
+    app.include_router(notifications.router, prefix=api_prefix)
+    app.include_router(compliance.router, prefix=api_prefix)
     # ── Teacher Portal ───────────────────────────────────────
     app.include_router(classes.router, prefix=api_prefix)
     app.include_router(assignments.router, prefix=api_prefix)

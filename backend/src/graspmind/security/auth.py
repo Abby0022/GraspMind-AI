@@ -94,9 +94,32 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    # Extract actual role from user metadata — not hardcoded
-    user_meta = user.user_metadata or {}
-    role = user_meta.get("role", "student")
+    # ── AUTHORITATIVE ROLE CHECK (Cached) ──────────────────────────────
+    # We do NOT trust the role in user_metadata. We use the public.users table.
+    # To avoid hammering the DB on every request, we cache the role in Redis.
+    role = "student"
+    try:
+        from graspmind.security.rate_limiter import get_redis
+        import json
+        
+        redis = await get_redis(settings)
+        cache_key = f"user_profile:{user.id}"
+        cached = await redis.get(cache_key)
+        
+        if cached:
+            profile_data = json.loads(cached)
+            role = profile_data.get("role", "student")
+        else:
+            from graspmind.supabase_client import get_service_client
+            service_client = await get_service_client(settings)
+            profile = await service_client.table("users").select("role").eq("id", user.id).maybe_single().execute()
+            role = profile.data.get("role", "student") if profile and profile.data else "student"
+            # Cache for 15 minutes
+            await redis.setex(cache_key, 900, json.dumps({"role": role}))
+            
+    except Exception as exc:
+        logger.warning("Role check failed for %s, falling back to 'student': %s", user.id, exc)
+        role = "student"
 
     return CurrentUser(
         id=user.id,

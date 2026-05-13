@@ -59,30 +59,35 @@ async def ingest_document(
 
         # Write to temp file for parsing
         suffix = Path(file_name).suffix
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = tmp.name
+        tmp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(file_bytes)
+                tmp_path = tmp.name
 
-        # Step 1: Parse the document
-        parsed = parse_document(tmp_path)
+            # Step 1: Parse the document
+            # Offload CPU-bound parsing to a thread pool to avoid blocking the event loop
+            import asyncio
+            parsed = await asyncio.to_thread(parse_document, tmp_path)
 
-        # Clean up temp file immediately
-        Path(tmp_path).unlink(missing_ok=True)
+            # Step 2: Chunk → Embed → Store in Qdrant
+            from graspmind.rag.pipeline import embed_and_store
 
-        # Step 2: Chunk → Embed → Store in Qdrant
-        from graspmind.rag.pipeline import embed_and_store
+            # embed_and_store handles batching and returns (result_dict, chunks_list)
+            pipeline_result, chunks = await embed_and_store(
+                document=parsed,
+                source_id=source_id,
+                notebook_id=notebook_id,
+                user_id=user_id,
+            )
 
-        pipeline_result = await embed_and_store(
-            document=parsed,
-            source_id=source_id,
-            notebook_id=notebook_id,
-            user_id=user_id,
-        )
+        finally:
+            # Clean up temp file immediately and guaranteed
+            if tmp_path and Path(tmp_path).exists():
+                Path(tmp_path).unlink(missing_ok=True)
 
         # Step 3: Store chunk records in Postgres (for reference/search)
-        from graspmind.rag.chunker import chunk_document
-
-        chunks = chunk_document(parsed, source_id)
+        # We REUSE the chunks from the pipeline to avoid redundant CPU work
         chunks_data = []
         for chunk in chunks:
             chunks_data.append({
@@ -94,6 +99,7 @@ async def ingest_document(
                 "token_count": chunk.token_count,
                 "qdrant_id": chunk.id,
             })
+
 
         if chunks_data:
             # Insert in batches to avoid payload limits

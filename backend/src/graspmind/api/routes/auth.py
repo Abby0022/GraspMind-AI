@@ -7,6 +7,7 @@ tokens to client-side JavaScript.
 
 import hmac
 import logging
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from supabase import AsyncClient
@@ -14,6 +15,8 @@ from supabase import AsyncClient
 logger = logging.getLogger(__name__)
 
 from graspmind.api.deps import AuthUser, get_service_supabase, get_user_supabase
+from graspmind.supabase_client import get_service_client
+from graspmind.security.rate_limiter import get_redis, RateLimiter
 from graspmind.config import Settings, get_settings
 from graspmind.models.schemas import (
     AuthResponse,
@@ -48,7 +51,12 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
     )
 
 
-@router.post("/signup", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup", 
+    response_model=AuthResponse, 
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(RateLimiter(max_requests=5, window_seconds=600))],  # 5 signups per 10 mins
+)
 async def signup(
     body: SignupRequest,
     response: Response,
@@ -143,7 +151,11 @@ async def signup(
     )
 
 
-@router.post("/login", response_model=AuthResponse)
+@router.post(
+    "/login", 
+    response_model=AuthResponse,
+    dependencies=[Depends(RateLimiter(max_requests=20, window_seconds=60))],  # 20 attempts per min
+)
 async def login(
     body: LoginRequest,
     response: Response,
@@ -182,6 +194,17 @@ async def login(
     db_name = db_profile.data.get("name", "") if db_profile.data else user_meta.get("name", "")
     db_role = db_profile.data.get("role", "student") if db_profile.data else "student"
 
+    # ── SECURITY: Log Success ─────────────────────────────────────────
+    try:
+        await supabase.table("audit_logs").insert({
+            "user_id": str(result.user.id),
+            "event_type": "login_success",
+            "action": "POST /api/v1/auth/login",
+            "metadata": {"ip": "masked"}
+        }).execute()
+    except Exception:
+        pass
+
     return AuthResponse(
         access_token=result.session.access_token,
         user=UserResponse(
@@ -200,6 +223,7 @@ async def refresh_token(
     response: Response,
     # Token refresh does not require an active session — use service client.
     supabase: AsyncClient = Depends(get_service_supabase),
+    settings: Settings = Depends(get_settings),
 ):
     """Refresh the access token using a valid refresh token."""
     try:
@@ -218,17 +242,40 @@ async def refresh_token(
 
     _set_auth_cookies(response, result.session.access_token, result.session.refresh_token)
 
-    # Fetch authoritative role + name from public.users (DB), not user_metadata.
-    # Service client is used here because the session is already validated by
-    # sign_in_with_password above; no per-request user-scoped client needed.
-    user_meta = result.user.user_metadata or {} if result.user else {}
+    # ── AUTHORITATIVE ROLE CHECK ─────────────────────────────────────
+    user_id = result.user.id if result.user else ""
+    db_name = ""
+    db_role = "student"
+    
+    try:
+        redis = await get_redis(settings)
+        cache_key = f"user_profile:{user_id}"
+        cached = await redis.get(cache_key)
+        
+        if cached:
+            profile_data = json.loads(cached)
+            db_name = profile_data.get("name", "")
+            db_role = profile_data.get("role", "student")
+        else:
+            profile = await supabase.table("users").select("name, role").eq(
+                "id", str(user_id)
+            ).maybe_single().execute()
+            
+            if profile and profile.data:
+                db_name = profile.data.get("name", "")
+                db_role = profile.data.get("role", "student")
+                # Cache for 15 minutes
+                await redis.setex(cache_key, 900, json.dumps({"name": db_name, "role": db_role}))
+    except Exception as exc:
+        logger.warning("Failed to fetch authoritative profile during refresh for %s: %s", user_id, exc)
+
     return AuthResponse(
         access_token=result.session.access_token,
         user=UserResponse(
-            id=result.user.id if result.user else "",
+            id=user_id,
             email=result.user.email or "" if result.user else "",
-            name=user_meta.get("name", ""),
-            role=user_meta.get("role", "student"),
+            name=db_name,
+            role=db_role,
             created_at=result.user.created_at if result.user else None,
         ),
     )
@@ -277,29 +324,51 @@ async def get_me(
     validated by AuthUser, so the service client is safe here.
     Role is always read from the DB — never from JWT user_metadata.
     """
+    # Try Redis cache first
+    try:
+        settings = get_settings()
+        redis = await get_redis(settings)
+        cache_key = f"user_profile:{user.id}"
+        cached = await redis.get(cache_key)
+        if cached:
+            profile_data = json.loads(cached)
+            return UserResponse(
+                id=user.id,
+                email=user.email,
+                name=profile_data.get("name", ""),
+                role=profile_data.get("role", "student"),
+                created_at=profile_data.get("created_at"),
+            )
+    except Exception:
+        pass
+
     try:
         profile = await supabase.table("users").select("name, role, created_at").eq(
             "id", user.id
         ).maybe_single().execute()
+        
+        if profile and profile.data:
+            # Cache for 15 minutes
+            await redis.setex(cache_key, 900, json.dumps({
+                "name": profile.data.get("name"),
+                "role": profile.data.get("role"),
+                "created_at": profile.data.get("created_at")
+            }))
+            
+            return UserResponse(
+                id=user.id,
+                email=user.email,
+                name=profile.data.get("name", ""),
+                role=profile.data.get("role", "student"),
+                created_at=profile.data.get("created_at"),
+            )
     except Exception as exc:
         logger.warning("Failed to fetch profile for %s: %s", user.id, exc)
-        profile = None
-
-    if not profile or not profile.data:
-        # Profile row may not exist yet (e.g. trigger hasn't fired, social login).
-        # Return safe defaults — role='student' is the least-privileged fallback.
-        return UserResponse(
-            id=user.id,
-            email=user.email,
-            name="",
-            role="student",
-            created_at=None,
-        )
 
     return UserResponse(
         id=user.id,
         email=user.email,
-        name=profile.data.get("name", ""),
-        role=profile.data.get("role", "student"),
-        created_at=profile.data.get("created_at"),
+        name="",
+        role="student",
+        created_at=None,
     )

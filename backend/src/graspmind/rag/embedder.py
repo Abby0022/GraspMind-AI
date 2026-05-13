@@ -7,6 +7,7 @@ Uses the `google-genai` SDK for embedding generation with
 task-specific prefixing for optimal retrieval quality.
 """
 
+import asyncio
 import logging
 from typing import Literal
 
@@ -44,22 +45,7 @@ async def embed_texts(
     dimensions: int | None = None,
     settings: Settings | None = None,
 ) -> list[list[float]]:
-    """Generate embeddings for a list of texts using Gemini Embedding 2.
-
-    Args:
-        texts: List of text strings to embed.
-        task: The embedding task type (affects vector space optimization).
-              Use RETRIEVAL_DOCUMENT for indexing, RETRIEVAL_QUERY for search.
-        dimensions: Output dimensionality (3072, 768, or 256 via Matryoshka).
-                    None uses the model default (3072).
-        settings: Optional settings override.
-
-    Returns:
-        List of embedding vectors, one per input text.
-
-    Raises:
-        ValueError: If texts list is empty.
-        RuntimeError: If the API call fails.
+    """Generate embeddings for a list of texts using Gemini Embedding 2 (Async).
     """
     if not texts:
         raise ValueError("Cannot embed empty text list")
@@ -82,7 +68,10 @@ async def embed_texts(
                 output_dimensionality=dims,
             )
 
-            result = client.models.embed_content(
+            # Use asyncio.to_thread to avoid blocking the event loop 
+            # as the current google-genai SDK call is synchronous.
+            result = await asyncio.to_thread(
+                client.models.embed_content,
                 model=s.embedding_model,
                 contents=batch,
                 config=config,

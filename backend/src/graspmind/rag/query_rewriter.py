@@ -52,7 +52,13 @@ async def hyde_rewrite(query: str, user_id: str = "") -> str:
             {"role": "user", "content": HYDE_PROMPT.format(query=query)},
         ]
 
-        hyde_doc = await complete_chat(messages, user_id=user_id)
+        hyde_doc = await complete_chat(
+            messages, 
+            user_id=user_id,
+            thinking_level="LOW",
+            reasoning_effort="low",
+            temperature=0.3
+        )
 
         if hyde_doc and len(hyde_doc.strip()) > 20:
             logger.info("HyDE rewrite: '%s' → %d chars", query[:50], len(hyde_doc))
@@ -82,7 +88,13 @@ async def expand_keywords(query: str, user_id: str = "") -> list[str]:
             {"role": "user", "content": KEYWORD_PROMPT.format(query=query)},
         ]
 
-        result = await complete_chat(messages, user_id=user_id)
+        result = await complete_chat(
+            messages, 
+            user_id=user_id,
+            thinking_level="LOW",
+            reasoning_effort="low",
+            temperature=0.1
+        )
 
         if result:
             # Parse comma-separated terms

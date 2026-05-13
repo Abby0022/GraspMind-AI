@@ -60,6 +60,8 @@ export function ChatPanel({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [chatMode, setChatMode] = useState<"standard" | "feynman">("standard");
   const [isListening, setIsListening] = useState(false);
+  const [availableProviders, setAvailableProviders] = useState<any[]>([]);
+  const [activeProvider, setActiveProvider] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,57 +72,194 @@ export function ChatPanel({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, statusText]);
 
-  // Helper to parse and render citations in text
-  const renderCitations = (children: any): any => {
-    if (typeof children === "string") {
-      const citationRegex = /\[Source:\s*"([^"]+)"(?:,\s*Page\s*(\d+))?\]/g;
-      const parts = [];
-      let lastIndex = 0;
-      let match;
+// Helper to parse and render citations in text - Moved outside for performance
+const renderCitations = (children: any): any => {
+  if (typeof children === "string") {
+    const citationRegex = /\[Source:\s*"([^"]+)"(?:,\s*Page\s*(\d+))?\]/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
 
-      while ((match = citationRegex.exec(children)) !== null) {
-        if (match.index > lastIndex) {
-          parts.push(children.substring(lastIndex, match.index));
-        }
-
-        const title = match[1];
-        const page = match[2];
-
-        parts.push(
-          <span
-            key={`inline-${title}-${match.index}`}
-            className="inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary/80 cursor-default select-none align-baseline whitespace-nowrap shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-primary/20 transition-colors"
-            title={title}
-          >
-            <FileText className="w-2.5 h-2.5 opacity-70" />
-            <span className="max-w-[100px] truncate">{title}</span>
-            {page && (
-              <>
-                <span className="w-px h-2.5 bg-primary/20 mx-0.5" />
-                <span className="opacity-60 font-medium">p.{page}</span>
-              </>
-            )}
-          </span>
-        );
-
-        lastIndex = citationRegex.lastIndex;
+    while ((match = citationRegex.exec(children)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(children.substring(lastIndex, match.index));
       }
 
-      if (lastIndex < children.length) {
-        parts.push(children.substring(lastIndex));
-      }
+      const title = match[1];
+      const page = match[2];
 
-      return parts.length > 0 ? parts : children;
+      parts.push(
+        <span
+          key={`inline-${title}-${match.index}`}
+          className="inline-flex items-center gap-1.5 px-2 py-0.5 mx-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary/80 cursor-default select-none align-baseline whitespace-nowrap shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-primary/20 transition-colors"
+          title={title}
+        >
+          <FileText className="w-2.5 h-2.5 opacity-70" />
+          <span className="max-w-[100px] truncate">{title}</span>
+          {page && (
+            <>
+              <span className="w-px h-2.5 bg-primary/20 mx-0.5" />
+              <span className="opacity-60 font-medium">p.{page}</span>
+            </>
+          )}
+        </span>
+      );
+
+      lastIndex = citationRegex.lastIndex;
     }
 
-    if (Array.isArray(children)) {
-      return children.map((child, i) => (
-        <React.Fragment key={i}>{renderCitations(child)}</React.Fragment>
-      ));
+    if (lastIndex < children.length) {
+      parts.push(children.substring(lastIndex));
     }
 
-    return children;
-  };
+    return parts.length > 0 ? parts : children;
+  }
+
+  if (Array.isArray(children)) {
+    return children.map((child, i) => (
+      <React.Fragment key={i}>{renderCitations(child)}</React.Fragment>
+    ));
+  }
+
+  return children;
+};
+
+// Memoized individual message component
+const ChatMessage = React.memo(({ msg, chatMode, renderCitations }: { msg: Message, chatMode: string, renderCitations: any }) => {
+  const markdownComponents = React.useMemo(() => ({
+    p: ({ children }: any) => (
+      <p className="mb-2 last:mb-0">{renderCitations(children)}</p>
+    ),
+    h1: ({ children }: any) => (
+      <h1 className="text-base font-bold mt-3 mb-1.5 first:mt-0">
+        {children}
+      </h1>
+    ),
+    h2: ({ children }: any) => (
+      <h2 className="text-sm font-bold mt-3 mb-1.5 first:mt-0">
+        {children}
+      </h2>
+    ),
+    h3: ({ children }: any) => (
+      <h3 className="text-sm font-semibold mt-2.5 mb-1 first:mt-0">
+        {children}
+      </h3>
+    ),
+    ul: ({ children }: any) => (
+      <ul className="mb-2 ml-3 space-y-0.5 list-none">
+        {children}
+      </ul>
+    ),
+    ol: ({ children }: any) => (
+      <ol className="mb-2 ml-4 space-y-0.5 list-decimal">
+        {children}
+      </ol>
+    ),
+    li: ({ children }: any) => (
+      <li className="flex gap-1.5 mb-1 last:mb-0">
+        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />
+        <span>{renderCitations(children)}</span>
+      </li>
+    ),
+    strong: ({ children }: any) => (
+      <strong className="font-semibold text-foreground">
+        {children}
+      </strong>
+    ),
+    em: ({ children }: any) => (
+      <em className="italic">{children}</em>
+    ),
+    code: ({ children, className }: any) => {
+      const isBlock = className?.includes("language-");
+      return isBlock ? (
+        <code className="block bg-secondary border border-border rounded-lg px-3 py-2 text-[12px] font-mono my-2 overflow-x-auto whitespace-pre">
+          {children}
+        </code>
+      ) : (
+        <code className="bg-secondary border border-border rounded px-1.5 py-0.5 text-[12px] font-mono">
+          {children}
+        </code>
+      );
+    },
+    pre: ({ children }: any) => (
+      <pre className="my-2">{children}</pre>
+    ),
+    blockquote: ({ children }: any) => (
+      <blockquote className="border-l-2 border-primary pl-3 my-2 text-muted-foreground italic">
+        {children}
+      </blockquote>
+    ),
+    hr: () => <hr className="border-border my-3" />,
+  }), [renderCitations]);
+
+  return (
+    <div
+      className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+    >
+      {msg.role === "assistant" && !msg.isError && (
+        <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
+          <Bot className="w-3.5 h-3.5 text-primary-foreground" />
+        </div>
+      )}
+      {msg.role === "assistant" && msg.isError && (
+        <div className="w-7 h-7 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center shrink-0 mt-0.5">
+          <TriangleAlert className="w-3.5 h-3.5 text-destructive" />
+        </div>
+      )}
+      <div
+        className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 ${
+          msg.role === "user"
+            ? "bg-primary text-primary-foreground rounded-br-sm"
+            : msg.isError
+              ? "bg-destructive/10 text-destructive border border-destructive/20 rounded-bl-sm shadow-sm"
+              : "bg-muted text-foreground rounded-bl-sm border border-border"
+        }`}
+      >
+        <div className="text-sm leading-relaxed">
+          {msg.isError ? (
+            <span>{msg.content}</span>
+          ) : (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={markdownComponents}
+            >
+              {msg.content}
+            </ReactMarkdown>
+          )}
+          {msg.isStreaming && (
+            <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 rounded-sm align-middle" />
+          )}
+        </div>
+
+        {msg.citations && msg.citations.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-border flex flex-wrap gap-1.5">
+            {msg.citations.map((c, i) => (
+              <span
+                key={`${c.source_title}-${i}`}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary/80 cursor-default select-none shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-primary/20 transition-colors"
+              >
+                <FileText className="w-2.5 h-2.5 opacity-70" />
+                <span className="truncate max-w-[120px]">{c.source_title}</span>
+                {c.page_num && (
+                  <>
+                    <span className="w-px h-2.5 bg-primary/20 mx-0.5" />
+                    <span className="opacity-60 font-medium">p.{c.page_num}</span>
+                  </>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+      {msg.role === "user" && (
+        <div className="w-7 h-7 rounded-full bg-border flex items-center justify-center shrink-0 mt-0.5">
+          <User className="w-3.5 h-3.5 text-muted-foreground" />
+        </div>
+      )}
+    </div>
+  );
+});
+ChatMessage.displayName = "ChatMessage";
 
   // Connect WebSocket
   const connect = useCallback(async () => {
@@ -238,7 +377,22 @@ export function ChatPanel({
         const { data: { session } } = await supabaseClient.auth.getSession();
         if (!session || !isMounted) return;
 
-        console.log("Fetching chat history from relative path: /api/v1/sessions/notebook/${notebookId}/latest");
+        // Fetch user providers to populate model switcher
+        const provRes = await fetch("/api/v1/providers/user", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (provRes.ok) {
+          const provData = await provRes.json();
+          // Only show working providers (active + valid key)
+          const active = (provData.providers || []).filter((p: any) => 
+            p.is_active && p.api_key_masked && !p.api_key_masked.includes("failed")
+          );
+          setAvailableProviders(active);
+          // Set default active provider from user's default setting
+          const def = active.find((p: any) => p.is_default) || active[0];
+          if (def) setActiveProvider(def.provider);
+        }
+
         const res = await fetch(`/api/v1/sessions/notebook/${notebookId}/latest`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
@@ -370,7 +524,7 @@ export function ChatPanel({
         content,
         notebook_id: notebookId,
         session_id: sessionId,
-        provider: selectedProvider,
+        provider: activeProvider,
         mode: chatMode,
       }),
     );
@@ -461,135 +615,12 @@ export function ChatPanel({
         )}
 
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {msg.role === "assistant" && !msg.isError && (
-              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5">
-                <Bot className="w-3.5 h-3.5 text-primary-foreground" />
-              </div>
-            )}
-            {msg.role === "assistant" && msg.isError && (
-              <div className="w-7 h-7 rounded-full bg-destructive/10 border border-destructive/20 flex items-center justify-center shrink-0 mt-0.5">
-                <TriangleAlert className="w-3.5 h-3.5 text-destructive" />
-              </div>
-            )}
-            <div
-              className={`max-w-[78%] rounded-2xl px-3.5 py-2.5 ${
-                msg.role === "user"
-                  ? "bg-primary text-primary-foreground rounded-br-sm"
-                  : msg.isError
-                    ? "bg-destructive/10 text-destructive border border-destructive/20 rounded-bl-sm shadow-sm"
-                    : "bg-muted text-foreground rounded-bl-sm border border-border"
-              }`}
-            >
-              <div className="text-sm leading-relaxed">
-                {msg.isError ? (
-                  <span>{msg.content}</span>
-                ) : (
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={{
-                      p: ({ children }) => (
-                        <p className="mb-2 last:mb-0">{renderCitations(children)}</p>
-                      ),
-                      h1: ({ children }) => (
-                        <h1 className="text-base font-bold mt-3 mb-1.5 first:mt-0">
-                          {children}
-                        </h1>
-                      ),
-                      h2: ({ children }) => (
-                        <h2 className="text-sm font-bold mt-3 mb-1.5 first:mt-0">
-                          {children}
-                        </h2>
-                      ),
-                      h3: ({ children }) => (
-                        <h3 className="text-sm font-semibold mt-2.5 mb-1 first:mt-0">
-                          {children}
-                        </h3>
-                      ),
-                      ul: ({ children }) => (
-                        <ul className="mb-2 ml-3 space-y-0.5 list-none">
-                          {children}
-                        </ul>
-                      ),
-                      ol: ({ children }) => (
-                        <ol className="mb-2 ml-4 space-y-0.5 list-decimal">
-                          {children}
-                        </ol>
-                      ),
-                      li: ({ children }) => (
-                        <li className="flex gap-1.5 mb-1 last:mb-0">
-                          <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary/40 shrink-0" />
-                          <span>{renderCitations(children)}</span>
-                        </li>
-                      ),
-                      strong: ({ children }) => (
-                        <strong className="font-semibold text-foreground">
-                          {children}
-                        </strong>
-                      ),
-                      em: ({ children }) => (
-                        <em className="italic">{children}</em>
-                      ),
-                      code: ({ children, className }) => {
-                        const isBlock = className?.includes("language-");
-                        return isBlock ? (
-                          <code className="block bg-secondary border border-border rounded-lg px-3 py-2 text-[12px] font-mono my-2 overflow-x-auto whitespace-pre">
-                            {children}
-                          </code>
-                        ) : (
-                          <code className="bg-secondary border border-border rounded px-1.5 py-0.5 text-[12px] font-mono">
-                            {children}
-                          </code>
-                        );
-                      },
-                      pre: ({ children }) => (
-                        <pre className="my-2">{children}</pre>
-                      ),
-                      blockquote: ({ children }) => (
-                        <blockquote className="border-l-2 border-primary pl-3 my-2 text-muted-foreground italic">
-                          {children}
-                        </blockquote>
-                      ),
-                      hr: () => <hr className="border-border my-3" />,
-                    }}
-                  >
-                    {msg.content}
-                  </ReactMarkdown>
-                )}
-                {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 bg-primary animate-pulse ml-0.5 rounded-sm align-middle" />
-                )}
-              </div>
-
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-border flex flex-wrap gap-1.5">
-                  {msg.citations.map((c, i) => (
-                    <span
-                      key={`${c.source_title}-${i}`}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20 text-[10px] font-bold text-primary/80 cursor-default select-none shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-primary/20 transition-colors"
-                    >
-                      <FileText className="w-2.5 h-2.5 opacity-70" />
-                      <span className="truncate max-w-[120px]">{c.source_title}</span>
-                      {c.page_num && (
-                        <>
-                          <span className="w-px h-2.5 bg-primary/20 mx-0.5" />
-                          <span className="opacity-60 font-medium">p.{c.page_num}</span>
-                        </>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            {msg.role === "user" && (
-              <div className="w-7 h-7 rounded-full bg-border flex items-center justify-center shrink-0 mt-0.5">
-                <User className="w-3.5 h-3.5 text-muted-foreground" />
-              </div>
-            )}
-          </div>
+          <ChatMessage 
+            key={msg.id} 
+            msg={msg} 
+            chatMode={chatMode} 
+            renderCitations={renderCitations} 
+          />
         ))}
 
         {statusText && (
@@ -602,140 +633,157 @@ export function ChatPanel({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className={`p-4 transition-colors duration-500 bg-transparent`}>
-        <div className="max-w-4xl mx-auto w-full">
-          {/* Top Control Bar */}
-          <div className="flex items-center justify-between mb-2.5 px-1">
-            <div className="flex items-center bg-muted/40 p-0.5 rounded-full border border-border">
-              <button
-                type="button"
-                onClick={() => setChatMode("standard")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide transition-all ${
-                  chatMode === "standard"
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Bot className="w-3.5 h-3.5" />
-                Tutor
-              </button>
-              <button
-                type="button"
-                onClick={() => setChatMode("feynman")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide transition-all ${
-                  chatMode === "feynman"
-                    ? "bg-purple-500/10 text-purple-600 font-bold"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <BrainCircuit className="w-3.5 h-3.5" />
-                Feynman
-              </button>
+      <div className="p-4 bg-transparent border-t border-border/10">
+        <div className="max-w-5xl mx-auto w-full flex flex-col gap-3">
+          {/* Main Controls Row */}
+          <div className="flex items-end gap-3 w-full">
+            {/* Mode Switcher - Far Left */}
+            <div className="flex flex-col gap-2 shrink-0 pb-1">
+              <div className="flex items-center bg-muted/40 p-0.5 rounded-full border border-border">
+                <button
+                  type="button"
+                  onClick={() => setChatMode("standard")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide transition-all ${
+                    chatMode === "standard"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Bot className="w-3.5 h-3.5" />
+                  Tutor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChatMode("feynman")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold tracking-wide transition-all ${
+                    chatMode === "feynman"
+                      ? "bg-purple-500/10 text-purple-600 font-bold"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <BrainCircuit className="w-3.5 h-3.5" />
+                  Feynman
+                </button>
+              </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <div className={`relative flex h-1.5 w-1.5`}>
-                  {isConnected && (
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34a853] opacity-75"></span>
+            {/* Input Area - Center (Flexible) */}
+            <form
+              onSubmit={handleSend}
+              className={`relative flex-1 flex items-center bg-card shadow-[0_2px_12px_rgba(0,0,0,0.04)] border rounded-full p-1 transition-all duration-500 focus-within:shadow-[0_8px_30px_rgba(0,0,0,0.08)] ${
+                chatMode === "feynman"
+                  ? "border-[#a855f7]/30 focus-within:border-[#9333ea]"
+                  : isInterrogating
+                    ? "border-[#fca5a5]/30 focus-within:border-[#ef4444]"
+                    : "border-border/50 focus-within:border-[#2563eb]"
+              }`}
+            >
+              <Input
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={
+                  isConnected
+                    ? chatMode === "feynman"
+                      ? "Explain it to the tutor..."
+                      : isInterrogating
+                        ? "Answer the question..."
+                        : "Ask anything..."
+                    : "Connecting..."
+                }
+                disabled={!isConnected || isLoading}
+                className={`flex-1 border-0 shadow-none focus-visible:ring-0 text-sm h-11 px-5 placeholder:text-muted-foreground/50 ${
+                  chatMode === "feynman"
+                    ? "text-[#9333ea] placeholder:text-[#d8b4fe]"
+                    : isInterrogating
+                      ? "text-[#ef4444] placeholder:text-[#fca5a5]"
+                      : "text-foreground"
+                }`}
+                maxLength={5000}
+              />
+              
+              <div className="flex items-center gap-1 pr-1.5">
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    isListening
+                      ? "bg-red-500/10 text-red-500 animate-pulse"
+                      : "text-muted-foreground/60 hover:text-foreground hover:bg-secondary"
+                  }`}
+                  title={isListening ? "Stop listening" : "Start speaking"}
+                >
+                  <Mic className="w-3.5 h-3.5" />
+                </button>
+    
+                <button
+                  type="submit"
+                  disabled={!input.trim() || !isConnected || isLoading}
+                  className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-500 shrink-0 ${
+                    !input.trim() || !isConnected || isLoading
+                      ? "bg-muted text-muted-foreground/30 cursor-not-allowed"
+                      : chatMode === "feynman"
+                        ? "bg-[#a855f7] text-white shadow-lg shadow-purple-500/20 hover:bg-[#9333ea] hover:scale-105 active:scale-95"
+                        : isInterrogating
+                          ? "bg-[#ef4444] text-white shadow-lg shadow-red-500/20 hover:bg-[#dc2626] hover:scale-105 active:scale-95"
+                          : "bg-[#2563eb] text-white shadow-lg shadow-blue-500/20 hover:bg-[#1d4ed8] hover:scale-105 active:scale-95"
+                  }`}
+                >
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 ml-0.5" />
                   )}
-                  <span
-                    className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isConnected ? "bg-[#34a853]" : "bg-[#ea4335]"}`}
-                  ></span>
-                </div>
-                <span className="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  {isConnected ? "Connected" : "Connecting"}
-                </span>
+                </button>
               </div>
+            </form>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setMessages([]);
-                  setSessionId(null);
-                }}
-                className="w-7 h-7 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
-                title="Reset Chat"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+            {/* Model & Status - Far Right */}
+            <div className="flex flex-col gap-2 shrink-0 pb-1 items-end">
+              <div className="flex items-center gap-3">
+                {availableProviders.length > 1 && (
+                  <div className="flex items-center bg-secondary/50 p-0.5 rounded-full border border-border/50 shadow-sm overflow-hidden">
+                    {availableProviders.map((p) => (
+                      <button
+                        key={p.provider}
+                        type="button"
+                        onClick={() => setActiveProvider(p.provider)}
+                        className={`px-3 py-1.5 rounded-full text-[9px] font-bold tracking-tight transition-all duration-300 ${
+                          activeProvider === p.provider
+                            ? "bg-background text-primary shadow-sm"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {p.provider_name.replace("Google ", "").replace("Groq ", "")}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-1.5 px-2">
+                  <div className={`relative flex h-1.5 w-1.5`}>
+                    {isConnected && (
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#34a853] opacity-75"></span>
+                    )}
+                    <span
+                      className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isConnected ? "bg-[#34a853]" : "bg-[#ea4335]"}`}
+                    ></span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMessages([]);
+                      setSessionId(null);
+                    }}
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors ml-1"
+                    title="Reset Chat"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Input Area */}
-          <form
-            onSubmit={handleSend}
-            className={`relative flex items-center bg-card shadow-[0_2px_12px_rgba(0,0,0,0.04)] border rounded-full p-1 transition-all duration-500 focus-within:shadow-[0_8px_30px_rgba(0,0,0,0.08)] ${
-              chatMode === "feynman"
-                ? "border-[#a855f7]/30 focus-within:border-[#9333ea]"
-                : isInterrogating
-                  ? "border-[#fca5a5]/30 focus-within:border-[#ef4444]"
-                  : "border-border/50 focus-within:border-[#2563eb]"
-            }`}
-          >
-            <Input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                isConnected
-                  ? chatMode === "feynman"
-                    ? "Explain it to the tutor..."
-                    : isInterrogating
-                      ? "Answer the question..."
-                      : "Ask anything..."
-                  : "Connecting..."
-              }
-              disabled={!isConnected || isLoading}
-              className={`flex-1 border-0 shadow-none focus-visible:ring-0 text-sm h-12 px-5 placeholder:text-muted-foreground/50 ${
-                chatMode === "feynman"
-                  ? "text-[#9333ea] placeholder:text-[#d8b4fe]"
-                  : isInterrogating
-                    ? "text-[#ef4444] placeholder:text-[#fca5a5]"
-                    : "text-foreground"
-              }`}
-              maxLength={5000}
-            />
-            
-            <div className="flex items-center gap-1.5 pr-2">
-              <div className="text-[10px] text-muted-foreground/30 font-medium select-none px-2 border-r border-border/50">
-                {input.length}/5000
-              </div>
-
-              <button
-                type="button"
-                onClick={toggleListening}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isListening
-                    ? "bg-red-500/10 text-red-500 animate-pulse"
-                    : "text-muted-foreground/60 hover:text-foreground hover:bg-secondary"
-                }`}
-                title={isListening ? "Stop listening" : "Start speaking"}
-              >
-                <Mic className="w-4 h-4" />
-              </button>
-  
-              <button
-                type="submit"
-                disabled={!input.trim() || !isConnected || isLoading}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500 shrink-0 ${
-                  !input.trim() || !isConnected || isLoading
-                    ? "bg-muted text-muted-foreground/30 cursor-not-allowed"
-                    : chatMode === "feynman"
-                      ? "bg-[#a855f7] text-white shadow-lg shadow-purple-500/20 hover:bg-[#9333ea] hover:scale-105 active:scale-95"
-                      : isInterrogating
-                        ? "bg-[#ef4444] text-white shadow-lg shadow-red-500/20 hover:bg-[#dc2626] hover:scale-105 active:scale-95"
-                        : "bg-[#2563eb] text-white shadow-lg shadow-blue-500/20 hover:bg-[#1d4ed8] hover:scale-105 active:scale-95"
-                }`}
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 ml-0.5" />
-                )}
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     </div>

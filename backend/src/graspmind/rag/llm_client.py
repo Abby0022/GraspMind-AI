@@ -16,6 +16,7 @@ from graspmind.providers.resolver import (
     LLMNotConfiguredError,
     ResolvedLLM,
     resolve_alternate_fallback,
+    resolve_specific_provider,
     resolve_user_llm_with_server_fallback,
 )
 from graspmind.security.key_sanitizer import scrub_keys
@@ -28,6 +29,8 @@ logger = logging.getLogger(__name__)
 async def stream_chat_completion(
     messages: list[dict],
     user_id: str,
+    provider_override: str | None = None,
+    **kwargs,
 ) -> AsyncGenerator[str]:
     """Stream a chat completion with automated fallback for capacity errors.
 
@@ -41,10 +44,14 @@ async def stream_chat_completion(
     for attempt in range(2):
         resolved: ResolvedLLM | None = None
         try:
-            # On first attempt, use standard resolution
+            # On first attempt, use standard resolution (or override if provided)
             # On second attempt, force server fallback skipping user config if needed
             if attempt == 0:
-                resolved = await resolve_user_llm_with_server_fallback(user_id)
+                if provider_override:
+                    resolved = await resolve_specific_provider(user_id, provider_override)
+                
+                if not resolved:
+                    resolved = await resolve_user_llm_with_server_fallback(user_id)
             else:
                 # Try to find a fallback that isn't the one we just tried
                 resolved = await resolve_alternate_fallback(user_id, exclude_slugs=tried_providers)
@@ -78,8 +85,11 @@ async def stream_chat_completion(
                 base_url=resolved.base_url,
                 api_key=resolved.api_key,
                 model=resolved.model,
+                temperature=resolved.temperature,
+                max_tokens=resolved.max_tokens,
                 auth_header=resolved.provider_spec.auth_header,
                 auth_prefix=resolved.provider_spec.auth_prefix,
+                **kwargs,
             ):
                 started = True
                 yield chunk
@@ -110,12 +120,13 @@ async def stream_chat_completion(
 async def complete_chat(
     messages: list[dict],
     user_id: str,
+    **kwargs,
 ) -> str:
     """Non-streaming chat completion (for quiz gen, summaries, etc).
 
     Returns the complete response text.
     """
     chunks: list[str] = []
-    async for chunk in stream_chat_completion(messages, user_id):
+    async for chunk in stream_chat_completion(messages, user_id, **kwargs):
         chunks.append(chunk)
     return "".join(chunks)

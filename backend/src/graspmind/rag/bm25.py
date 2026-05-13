@@ -140,9 +140,14 @@ class BM25Index:
         return scores[:top_k]
 
 
+import pickle
+from graspmind.security.rate_limiter import get_redis
+
+
 async def build_bm25_index(
     notebook_id: str,
     supabase_client=None,
+    use_cache: bool = True,
 ) -> BM25Index:
     """Build a BM25 index from all chunks in a notebook.
 
@@ -150,10 +155,26 @@ async def build_bm25_index(
     The index is rebuilt per-query (cached in production via Redis).
     """
     from graspmind.config import get_settings
+    settings = get_settings()
 
+    # ── Step 0: Try to load from Redis cache ────────────────
+    redis = None
+    if use_cache:
+        try:
+            redis = await get_redis(settings)
+            cache_key = f"bm25_index:{notebook_id}"
+            cached_data = await redis.get(cache_key)
+            if cached_data:
+                # Need to use pickle safely, assuming internal trusted use
+                index = pickle.loads(cached_data) if isinstance(cached_data, bytes) else pickle.loads(cached_data.encode('latin1'))
+                logger.info("Loaded BM25 index from cache for notebook %s", notebook_id)
+                return index
+        except Exception as exc:
+            logger.warning("Failed to load BM25 index from cache: %s", exc)
+
+    # ── Step 1: Fetch documents from Supabase ────────────────
     if supabase_client is None:
         from supabase import acreate_client
-        settings = get_settings()
         supabase_client = await acreate_client(settings.supabase_url, settings.supabase_service_key)
 
     # Fetch source IDs for this notebook first (extract plain UUID strings)
@@ -190,4 +211,17 @@ async def build_bm25_index(
         index.add_documents(docs)
         logger.info("Built BM25 index: %d docs for notebook %s", len(docs), notebook_id)
 
+        # ── Step 3: Save to Redis cache ──────────────────────
+        if use_cache and redis:
+            try:
+                # Use a reasonable TTL (e.g., 1 hour)
+                await redis.setex(
+                    f"bm25_index:{notebook_id}",
+                    3600,
+                    pickle.dumps(index)
+                )
+            except Exception as exc:
+                logger.warning("Failed to save BM25 index to cache: %s", exc)
+
     return index
+

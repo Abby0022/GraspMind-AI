@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
+import { AssessmentGuard } from "@/components/student/assessment-guard";
+import { api } from "@/lib/api";
 
 interface Question {
   id: string;
@@ -50,11 +52,21 @@ export function QuizClient({
   userId,
   isEmbedded,
   examDate,
+  assignmentId,
+  isProctored,
+  timeLimitMins,
+  requireFullscreen,
+  submissionId,
 }: {
   notebookId: string;
   userId: string;
   isEmbedded?: boolean;
   examDate?: string;
+  assignmentId?: string;
+  isProctored?: boolean;
+  timeLimitMins?: number | null;
+  requireFullscreen?: boolean;
+  submissionId?: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -155,6 +167,15 @@ export function QuizClient({
       if (!res.ok) throw new Error(await res.text());
 
       const data: QuizResult = await res.json();
+      
+      // If part of an assignment, update submission
+      if (assignmentId) {
+        await api.assignments.submit(assignmentId, {
+          status: "submitted",
+          score: data.score,
+        });
+      }
+
       setResults(data);
       setPhase("results");
     } catch (err) {
@@ -297,131 +318,142 @@ export function QuizClient({
 
         {/* Quiz Phase */}
         {phase === "quiz" && currentQuestion && (
-          <div className="space-y-6">
-            {/* Progress bar */}
-            <div className="w-full bg-muted rounded-full h-1.5">
-              <div
-                className="bg-violet-500 h-1.5 rounded-full transition-all duration-300"
-                style={{
-                  width: `${((currentIndex + 1) / questions.length) * 100}%`,
-                }}
-              />
-            </div>
+          <AssessmentGuard
+            submissionId={submissionId || ""}
+            isProctored={!!isProctored}
+            timeLimitMins={timeLimitMins || null}
+            requireFullscreen={!!requireFullscreen}
+            onTimeUp={() => {
+              toast.warning("Time is up! Submitting your answers.");
+              handleSubmit();
+            }}
+          >
+            <div className="space-y-6">
+              {/* Progress bar */}
+              <div className="w-full bg-muted rounded-full h-1.5">
+                <div
+                  className="bg-violet-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{
+                    width: `${((currentIndex + 1) / questions.length) * 100}%`,
+                  }}
+                />
+              </div>
 
-            <Card className="bg-card border-border">
-              <CardContent className="p-6 space-y-6">
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] border-border text-muted-foreground"
-                  >
-                    {currentQuestion.difficulty}
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] border-border text-muted-foreground"
-                  >
-                    {currentQuestion.question_type === "mcq"
-                      ? "Multiple Choice"
-                      : currentQuestion.question_type === "fill_blank"
-                        ? "Fill in the Blank"
-                        : "Short Answer"}
-                  </Badge>
-                </div>
+              <Card className="bg-card border-border">
+                <CardContent className="p-6 space-y-6">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-border text-muted-foreground"
+                    >
+                      {currentQuestion.difficulty}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] border-border text-muted-foreground"
+                    >
+                      {currentQuestion.question_type === "mcq"
+                        ? "Multiple Choice"
+                        : currentQuestion.question_type === "fill_blank"
+                          ? "Fill in the Blank"
+                          : "Short Answer"}
+                    </Badge>
+                  </div>
 
-                <h3 className="text-lg font-medium text-foreground leading-relaxed">
-                  {currentQuestion.question}
-                </h3>
+                  <h3 className="text-lg font-medium text-foreground leading-relaxed">
+                    {currentQuestion.question}
+                  </h3>
 
-                {/* MCQ Options */}
-                {currentQuestion.question_type === "mcq" &&
-                  currentQuestion.options.length > 0 && (
-                    <div className="space-y-2">
-                      {currentQuestion.options.map((option, i) => {
-                        const letter = String.fromCharCode(65 + i);
-                        const isSelected =
-                          answers[currentQuestion.id] === option;
-                        return (
-                          <button
-                            key={option}
-                            onClick={() =>
-                              setAnswers((prev) => ({
-                                ...prev,
-                                [currentQuestion.id]: option,
-                              }))
-                            }
-                            className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
-                              isSelected
-                                ? "border-foreground bg-foreground/5 text-foreground font-medium"
-                                : "border-border bg-muted text-foreground hover:border-foreground/20"
-                            }`}
-                          >
-                            <span className="font-mono text-xs mr-3 text-muted-foreground">
-                              {letter}
-                            </span>
-                            {option}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {/* MCQ Options */}
+                  {currentQuestion.question_type === "mcq" &&
+                    currentQuestion.options.length > 0 && (
+                      <div className="space-y-2">
+                        {currentQuestion.options.map((option, i) => {
+                          const letter = String.fromCharCode(65 + i);
+                          const isSelected =
+                            answers[currentQuestion.id] === option;
+                          return (
+                            <button
+                              key={option}
+                              onClick={() =>
+                                setAnswers((prev) => ({
+                                  ...prev,
+                                  [currentQuestion.id]: option,
+                                }))
+                              }
+                              className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${
+                                isSelected
+                                  ? "border-foreground bg-foreground/5 text-foreground font-medium"
+                                  : "border-border bg-muted text-foreground hover:border-foreground/20"
+                              }`}
+                            >
+                              <span className="font-mono text-xs mr-3 text-muted-foreground">
+                                {letter}
+                              </span>
+                              {option}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                  {/* Text input for fill_blank and short_answer */}
+                  {currentQuestion.question_type !== "mcq" && (
+                    <textarea
+                      value={answers[currentQuestion.id] || ""}
+                      onChange={(e) =>
+                        setAnswers((prev) => ({
+                          ...prev,
+                          [currentQuestion.id]: e.target.value,
+                        }))
+                      }
+                      placeholder={
+                        currentQuestion.question_type === "fill_blank"
+                          ? "Type the missing word(s)..."
+                          : "Type your answer..."
+                      }
+                      rows={3}
+                      className="w-full bg-muted border border-border rounded-xl px-4 py-3 text-foreground placeholder-muted-foreground focus:border-foreground/50 focus:outline-none resize-none transition-colors"
+                    />
                   )}
+                </CardContent>
+              </Card>
 
-                {/* Text input for fill_blank and short_answer */}
-                {currentQuestion.question_type !== "mcq" && (
-                  <textarea
-                    value={answers[currentQuestion.id] || ""}
-                    onChange={(e) =>
-                      setAnswers((prev) => ({
-                        ...prev,
-                        [currentQuestion.id]: e.target.value,
-                      }))
-                    }
-                    placeholder={
-                      currentQuestion.question_type === "fill_blank"
-                        ? "Type the missing word(s)..."
-                        : "Type your answer..."
-                    }
-                    rows={3}
-                    className="w-full bg-muted border border-border rounded-xl px-4 py-3 text-foreground placeholder-muted-foreground focus:border-foreground/50 focus:outline-none resize-none transition-colors"
-                  />
+              <div className="flex justify-between">
+                <Button
+                  variant="ghost"
+                  disabled={currentIndex === 0}
+                  onClick={() => setCurrentIndex((i) => i - 1)}
+                  className="text-muted-foreground"
+                >
+                  Previous
+                </Button>
+
+                {isLastQuestion ? (
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={!allAnswered || isLoading}
+                    className="bg-foreground text-background hover:opacity-90"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                    )}
+                    Submit Quiz
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => setCurrentIndex((i) => i + 1)}
+                    className="bg-foreground text-background hover:opacity-90"
+                  >
+                    Next
+                    <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
                 )}
-              </CardContent>
-            </Card>
-
-            <div className="flex justify-between">
-              <Button
-                variant="ghost"
-                disabled={currentIndex === 0}
-                onClick={() => setCurrentIndex((i) => i - 1)}
-                className="text-muted-foreground"
-              >
-                Previous
-              </Button>
-
-              {isLastQuestion ? (
-                <Button
-                  onClick={handleSubmit}
-                  disabled={!allAnswered || isLoading}
-                  className="bg-foreground text-background hover:opacity-90"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                  )}
-                  Submit Quiz
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => setCurrentIndex((i) => i + 1)}
-                  className="bg-foreground text-background hover:opacity-90"
-                >
-                  Next
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              )}
+              </div>
             </div>
-          </div>
+          </AssessmentGuard>
         )}
 
         {/* Results Phase */}

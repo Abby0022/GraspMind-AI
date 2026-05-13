@@ -35,20 +35,20 @@ const Toaster = ({ ...props }: ToasterProps) => {
       toastOptions={{
         classNames: {
           toast:
-            "group toast group-[.toaster]:bg-white group-[.toaster]:text-[#202124] group-[.toaster]:border-[#e8eaed] group-[.toaster]:shadow-xl group-[.toaster]:rounded-[24px] group-[.toaster]:font-semibold group-[.toaster]:text-[14px] px-5 py-4",
+            "group toast group-[.toaster]:bg-card/80 group-[.toaster]:backdrop-blur-xl group-[.toaster]:text-foreground group-[.toaster]:border-border/50 group-[.toaster]:shadow-[0_8px_30px_rgba(0,0,0,0.08)] dark:group-[.toaster]:shadow-[0_8px_30px_rgba(0,0,0,0.3)] group-[.toaster]:rounded-[18px] group-[.toaster]:font-semibold group-[.toaster]:text-[13px] sm:group-[.toaster]:text-[14px] px-4 py-3 sm:px-5 sm:py-4",
           description:
-            "group-[.toast]:text-[#5f6368] group-[.toast]:font-medium text-[13px]",
+            "group-[.toast]:text-muted-foreground group-[.toast]:font-medium text-[13px]",
           actionButton:
-            "group-[.toast]:bg-[#111] group-[.toast]:text-white group-[.toast]:rounded-full",
+            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground group-[.toast]:rounded-full group-[.toast]:px-4 group-[.toast]:font-bold",
           cancelButton:
-            "group-[.toast]:bg-[#f8f9fa] group-[.toast]:text-[#5f6368] group-[.toast]:border-[#e8eaed] group-[.toast]:rounded-full",
+            "group-[.toast]:bg-secondary group-[.toast]:text-muted-foreground group-[.toast]:border-border/50 group-[.toast]:rounded-full",
           error:
-            "group-[.toaster]:bg-[#fffafa] group-[.toaster]:text-[#ef4444] group-[.toaster]:border-[#fca5a5] group-[.toaster]:shadow-[0_8px_30px_rgb(239,68,68,0.12)]",
+            "group-[.toaster]:bg-destructive/10 group-[.toaster]:text-destructive group-[.toaster]:border-destructive/20 group-[.toaster]:shadow-[0_8px_30px_rgb(239,68,68,0.12)]",
           success:
-            "group-[.toaster]:bg-[#f0fdf4] group-[.toaster]:text-[#16a34a] group-[.toaster]:border-[#bbf7d0] group-[.toaster]:shadow-[0_8px_30px_rgb(22,163,74,0.12)]",
+            "group-[.toaster]:bg-green-500/10 group-[.toaster]:text-green-600 dark:group-[.toaster]:text-green-400 group-[.toaster]:border-green-500/20 group-[.toaster]:shadow-[0_8px_30px_rgb(34,197,94,0.12)]",
           warning:
-            "group-[.toaster]:bg-[#fffbeb] group-[.toaster]:text-[#d97706] group-[.toaster]:border-[#fde68a]",
-          info: "group-[.toaster]:bg-[#f0f9ff] group-[.toaster]:text-[#0284c7] group-[.toaster]:border-[#bae6fd]",
+            "group-[.toaster]:bg-amber-500/10 group-[.toaster]:text-amber-600 group-[.toaster]:border-amber-500/20",
+          info: "group-[.toaster]:bg-primary/10 group-[.toaster]:text-primary group-[.toaster]:border-primary/20",
         },
       }}
       {...props}

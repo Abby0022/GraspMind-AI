@@ -79,7 +79,7 @@ export function ClassCard({ cls }: ClassCardProps) {
       <div className="flex items-center gap-4 text-[12px] text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <Users className="w-3.5 h-3.5" />
-          {cls.student_count ?? 0} students
+          {cls.student_count ?? 0} learners
         </span>
         <span className="flex items-center gap-1.5">
           <BookOpen className="w-3.5 h-3.5" />

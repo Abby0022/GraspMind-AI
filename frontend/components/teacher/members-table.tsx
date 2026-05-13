@@ -6,7 +6,9 @@ import { useState } from "react";
 
 interface MembersTableProps {
   members: ClassMember[];
+  sections?: any[];
   onRemove?: (studentId: string) => void;
+  onUpdateSection?: (studentId: string, sectionId: string | null) => void;
 }
 
 type SortKey = "name" | "avg_mastery" | "joined_at";
@@ -93,6 +95,9 @@ export function MembersTable({ members, onRemove }: MembersTableProps) {
             <th className="text-left px-4 py-3 hidden md:table-cell">
               <SortButton label="Joined" k="joined_at" />
             </th>
+            <th className="text-left px-4 py-3">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Section</span>
+            </th>
             {onRemove && <th className="px-4 py-3" />}
           </tr>
         </thead>
@@ -125,6 +130,18 @@ export function MembersTable({ members, onRemove }: MembersTableProps) {
                   day: "numeric",
                   year: "numeric",
                 })}
+              </td>
+              <td className="px-4 py-3">
+                <select
+                  value={m.section_id || ""}
+                  onChange={(e) => onUpdateSection?.(m.student_id, e.target.value || null)}
+                  className="bg-background border border-border/50 rounded-lg px-2 py-1 text-[12px] text-foreground focus:outline-none focus:ring-1 focus:ring-primary w-full max-w-[120px]"
+                >
+                  <option value="">No Section</option>
+                  {sections?.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
               </td>
               {onRemove && (
                 <td className="px-4 py-3 text-right">

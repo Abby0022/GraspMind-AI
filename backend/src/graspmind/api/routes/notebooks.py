@@ -92,10 +92,29 @@ async def get_notebook(
 
     # Try share check
     share = await supabase.table("notebook_shares").select("role").eq("notebook_id", str(notebook_id)).eq("user_id", user.id).single().execute()
-    if not share.data:
-        raise HTTPException(status_code=403, detail="Access denied")
+    if share.data:
+        return nb.data
 
-    return nb.data
+    # ── NEW: Try Class Assignment Check (Course Material) ────────────
+    # Check if this notebook is assigned in any of the user's active classes
+    assigned = await supabase.table("assignments").select("class_id").eq("notebook_id", str(notebook_id)).execute()
+    if assigned.data:
+        class_ids = [a["class_id"] for a in assigned.data]
+        # Verify the student is in one of these classes and it's not archived
+        active_classes = await supabase.table("classes").select("id").in_("id", class_ids).eq("is_archived", False).execute()
+        active_ids = [c["id"] for c in (active_classes.data or [])]
+        if active_ids:
+            membership = (
+                await supabase.table("class_members")
+                .select("class_id")
+                .in_("class_id", active_ids)
+                .eq("student_id", user.id)
+                .execute()
+            )
+            if membership.data:
+                return nb.data
+
+    raise HTTPException(status_code=403, detail="Access denied")
 
 
 @router.patch("/{notebook_id}", response_model=NotebookResponse)
@@ -157,6 +176,14 @@ async def delete_notebook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Notebook not found",
         )
+
+    # ── PRIVACY: Cleanup Vectors ─────────────────────────────────────
+    try:
+        from graspmind.rag.vector_store import delete_notebook_vectors
+        await delete_notebook_vectors(user_id=user.id, notebook_id=str(notebook_id))
+    except Exception as exc:
+        logger.error("Failed to delete vectors for notebook %s: %s", notebook_id, exc)
+
 
 
 @router.post("/{notebook_id}/share")

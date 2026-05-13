@@ -43,15 +43,21 @@ export function extractApiError(status: number, data: any): ApiError {
   return new ApiError(status, data?.message || "An unknown error occurred");
 }
 
+import { scrubKeys } from "./utils";
+
 /**
  * A global utility to catch and display errors to the user via Sonner toasts.
  * Use this in try/catch blocks within components or hooks.
  */
 export function handleError(error: unknown, fallbackMessage = "An unexpected error occurred.") {
-  console.error("Caught error:", error);
+  const isDev = process.env.NODE_ENV === "development";
+  
+  if (isDev) {
+    console.error("Caught error:", error);
+  }
 
   if (error instanceof ApiError) {
-    toast.error(error.message, {
+    toast.error(scrubKeys(error.message), {
       description: error.type ? `Error: ${error.type}` : undefined,
     });
     return;
@@ -59,7 +65,7 @@ export function handleError(error: unknown, fallbackMessage = "An unexpected err
 
   if (error instanceof Error) {
     toast.error(fallbackMessage, {
-      description: error.message,
+      description: scrubKeys(error.message),
     });
     return;
   }

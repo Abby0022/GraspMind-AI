@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     llm_provider: str = "groq"  # groq | ollama | openrouter
-    llm_model: str = "llama-3.3-70b-versatile"
+    llm_model: str = "llama-4-scout"
     llm_timeout: float = 60.0
     llm_timeout_ollama: float = 120.0
 

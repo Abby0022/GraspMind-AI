@@ -145,6 +145,7 @@ class ClassCreate(BaseModel):
 class ClassUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     subject: str | None = Field(default=None, max_length=100)
+    is_archived: bool | None = None
 
 
 class ClassResponse(BaseModel):
@@ -155,6 +156,7 @@ class ClassResponse(BaseModel):
     name: str
     subject: str | None
     invite_code: str
+    is_archived: bool
     created_at: datetime
 
 
@@ -176,6 +178,9 @@ class AssignmentCreate(BaseModel):
     type: Literal["read", "quiz", "flashcard"]
     notebook_id: UUID | None = None
     due_date: datetime | None = None
+    is_proctored: bool = False
+    time_limit_mins: int | None = Field(default=None, ge=1, le=240)
+    require_fullscreen: bool = False
 
 
 class AssignmentResponse(BaseModel):
@@ -188,6 +193,9 @@ class AssignmentResponse(BaseModel):
     description: str | None
     type: str
     due_date: datetime | None
+    is_proctored: bool
+    time_limit_mins: int | None
+    require_fullscreen: bool
     created_at: datetime
 
 
@@ -196,6 +204,7 @@ class SubmissionUpdate(BaseModel):
 
     status: str = Field(pattern=r"^(pending|in_progress|submitted)$")
     score: float | None = Field(default=None, ge=0, le=100)
+    focus_lost_count: int | None = 0
 
 
 class SubmissionResponse(BaseModel):
@@ -206,5 +215,18 @@ class SubmissionResponse(BaseModel):
     student_id: UUID
     status: str
     score: float | None
+    focus_lost_count: int
     submitted_at: datetime | None
 
+
+class NotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    user_id: UUID
+    title: str
+    message: str
+    type: str
+    link: str | None = None
+    is_read: bool
+    created_at: datetime

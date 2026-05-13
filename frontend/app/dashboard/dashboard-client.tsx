@@ -14,8 +14,9 @@ import {
   Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useMemo, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { createClient } from "@/lib/supabase/client";
 import { NavBar } from "@/components/nav-bar";
 import {
   Dialog,
@@ -26,7 +27,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { createClient } from "@/lib/supabase/client";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -56,11 +56,18 @@ interface UserProvider {
 
 export function DashboardClient({ user }: { user: User }) {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
   
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+
+  // Simple debounce effect
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
   
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
@@ -69,22 +76,18 @@ export function DashboardClient({ user }: { user: User }) {
   
   const [providers, setProviders] = useState<UserProvider[]>([]);
 
-  useEffect(() => {
-    loadData();
-  }, [user.id]);
-
-  async function loadData() {
-    const [notebooksRes] = await Promise.all([
-      supabase
-        .from("notebooks")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false }),
-    ]);
-    setNotebooks(notebooksRes.data || []);
-
-    // Load providers
+  const loadData = useCallback(async () => {
     try {
+      const [notebooksRes] = await Promise.all([
+        supabase
+          .from("notebooks")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false }),
+      ]);
+      setNotebooks(notebooksRes.data || []);
+
+      // Load providers
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token || "";
       const res = await fetch(`${API}/api/v1/providers/user`, {
@@ -94,12 +97,18 @@ export function DashboardClient({ user }: { user: User }) {
         const data = await res.json();
         setProviders(data.providers || []);
       }
-    } catch {}
+    } catch (err) {
+      console.error("Failed to load dashboard data:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user.id, supabase]);
 
-    setIsLoading(false);
-  }
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  async function handleCreate(e: React.FormEvent) {
+  const handleCreate = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) return;
     setIsCreating(true);
@@ -125,25 +134,35 @@ export function DashboardClient({ user }: { user: User }) {
     } finally {
       setIsCreating(false);
     }
-  }
+  }, [newTitle, newSubject, user.id, supabase]);
 
-  async function handleLogout() {
+  const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
-  }
+  }, [router, supabase]);
 
-  const filtered = notebooks.filter(
-    (n) =>
-      n.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      n.subject?.toLowerCase().includes(searchQuery.toLowerCase()),
-  );
 
-  const subjectCount = new Set(notebooks.map((n) => n.subject).filter(Boolean)).size;
-  const thisMonthCount = notebooks.filter(
-    (n) => new Date(n.created_at).getMonth() === new Date().getMonth()
-  ).length;
-  const defaultProvider = providers.find((p) => p.is_default);
+  const filtered = useMemo(() => 
+    notebooks.filter(
+      (n) =>
+        n.title.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+        n.subject?.toLowerCase().includes(debouncedQuery.toLowerCase()),
+    ), [notebooks, debouncedQuery]);
+
+  const subjectCount = useMemo(() => 
+    new Set(notebooks.map((n) => n.subject).filter(Boolean)).size, [notebooks]);
+
+  const thisMonthCount = useMemo(() => 
+    notebooks.filter(
+      (n) => {
+        const d = new Date(n.created_at);
+        const now = new Date();
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      }
+    ).length, [notebooks]);
+
+  const defaultProvider = useMemo(() => providers.find((p) => p.is_default), [providers]);
 
   function formatDate(dateStr: string) {
     const d = new Date(dateStr);

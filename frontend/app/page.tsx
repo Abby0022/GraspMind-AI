@@ -8,6 +8,7 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { NewsletterForm } from "@/components/newsletter-form";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -31,7 +32,14 @@ export default async function Home() {
       {/* Navigation */}
       <header className="sticky top-0 z-50 h-16 border-b border-border/40 bg-background/80 backdrop-blur-md flex items-center justify-between px-6 lg:px-12 transition-colors duration-300">
         <div className="flex items-center gap-2.5">
-          <img src="/grasp.svg" alt="GraspMind AI Logo" className="w-8 h-8 object-contain dark:invert" />
+          <Image 
+            src="/grasp.svg" 
+            alt="GraspMind AI Logo" 
+            width={32} 
+            height={32} 
+            priority
+            className="object-contain dark:invert" 
+          />
           <span className="font-bold text-lg text-foreground tracking-tight">
             GraspMind AI
           </span>
@@ -302,8 +310,13 @@ export default async function Home() {
       {/* Footer */}
       <footer className="py-8 border-t border-border/40 text-center flex flex-col items-center justify-center gap-4 bg-background">
         <div className="flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity cursor-pointer">
-          <div className="w-5 h-5 rounded-full overflow-hidden">
-            <img src="/grasp.svg" alt="GraspMind AI Logo" className="w-full h-full object-cover dark:invert" />
+          <div className="w-5 h-5 rounded-full overflow-hidden relative">
+            <Image 
+              src="/grasp.svg" 
+              alt="GraspMind AI Logo" 
+              fill
+              className="object-cover dark:invert" 
+            />
           </div>
           <span className="font-bold text-sm tracking-tight">GraspMind AI</span>
         </div>

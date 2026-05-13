@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from graspmind.config import get_settings
 from graspmind.providers.registry import PROVIDER_REGISTRY, ProviderSpec, get_provider
 from graspmind.security.vault import VaultError, decrypt_key
+from graspmind.supabase_client import get_service_client
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,8 @@ class ResolvedLLM:
     api_key: str
     model: str
     base_url: str
+    temperature: float = 0.7
+    max_tokens: int = 2048
 
     def wipe(self) -> None:
         """Zero out the API key from memory."""
@@ -109,6 +112,8 @@ async def resolve_user_llm(user_id: str) -> ResolvedLLM:
         api_key=api_key,
         model=model,
         base_url=base_url,
+        temperature=config.get("temperature", 0.7),
+        max_tokens=config.get("max_tokens", 2048),
     )
 
 
@@ -123,14 +128,16 @@ def _server_fallback() -> dict | None:
             "_raw_key": settings.groq_api_key,
             "model": settings.llm_model,
             "base_url": "",
+            "temperature": 0.5,  # Factual default for Groq
+            "max_tokens": 4096,
         }
     if settings.google_api_key:
         return {
             "provider": "google",
-            "api_key_enc": "",
-            "_raw_key": settings.google_api_key,
-            "model": "gemini-2.0-flash",
+            "model": "gemini-3.1-flash",
             "base_url": "",
+            "temperature": 0.7,
+            "max_tokens": 8192,
         }
     return None
 
@@ -176,6 +183,8 @@ async def resolve_user_llm_with_server_fallback(user_id: str) -> ResolvedLLM:
         api_key=api_key,
         model=model,
         base_url=base_url,
+        temperature=config.get("temperature", 0.7),
+        max_tokens=config.get("max_tokens", 2048),
     )
 
 
@@ -207,6 +216,8 @@ async def _cache_config(user_id: str, config: dict) -> None:
             "model": config.get("model"),
             "base_url": config.get("base_url"),
             "api_key_enc": config.get("api_key_enc", ""),
+            "temperature": config.get("temperature", 0.7),
+            "max_tokens": config.get("max_tokens", 2048),
         }
         await redis.setex(f"llm_config:{user_id}", _CACHE_TTL, json.dumps(safe))
     except Exception:
@@ -228,14 +239,13 @@ async def invalidate_cache(user_id: str) -> None:
 async def _load_from_db(user_id: str) -> dict | None:
     """Load the user's default active provider from Supabase."""
     try:
-        from supabase import acreate_client
         settings = get_settings()
-        client = await acreate_client(settings.supabase_url, settings.supabase_service_key)
+        client = await get_service_client(settings)
 
         # Prefer the default provider; fall back to any active one
         result = await (
             client.table("user_providers")
-            .select("provider, model, base_url, api_key_enc")
+            .select("provider, model, base_url, api_key_enc, temperature, max_tokens")
             .eq("user_id", user_id)
             .eq("is_active", True)
             .order("is_default", desc=True)
@@ -249,6 +259,46 @@ async def _load_from_db(user_id: str) -> dict | None:
         logger.warning("Failed to load user LLM config: %s", str(e))
 
     return None
+
+
+async def resolve_specific_provider(user_id: str, provider_slug: str) -> ResolvedLLM | None:
+    """Resolve a specific configured provider for a user (manual override)."""
+    try:
+        settings = get_settings()
+        client = await get_service_client(settings)
+
+        result = await (
+            client.table("user_providers")
+            .select("provider, model, base_url, api_key_enc, temperature, max_tokens")
+            .eq("user_id", user_id)
+            .eq("provider", provider_slug)
+            .maybe_single()
+            .execute()
+        )
+
+        if not result.data:
+            return None
+
+        config = result.data
+        provider_spec = get_provider(config["provider"])
+        if not provider_spec:
+            return None
+
+        api_key = ""
+        if config.get("api_key_enc"):
+            api_key = decrypt_key(config["api_key_enc"])
+
+        return ResolvedLLM(
+            provider_spec=provider_spec,
+            api_key=api_key,
+            model=config.get("model") or provider_spec.default_model,
+            base_url=config.get("base_url") or provider_spec.base_url,
+            temperature=config.get("temperature", 0.7),
+            max_tokens=config.get("max_tokens", 2048),
+        )
+    except Exception as e:
+        logger.warning("Failed to resolve specific provider %s: %s", provider_slug, str(e))
+        return None
 async def resolve_alternate_fallback(user_id: str, exclude_slugs: set[str]) -> ResolvedLLM | None:
     """Find a server-level fallback that isn't in the exclude list."""
     settings = get_settings()
@@ -259,7 +309,7 @@ async def resolve_alternate_fallback(user_id: str, exclude_slugs: set[str]) -> R
         config = {
             "provider": "google",
             "_raw_key": settings.google_api_key,
-            "model": "gemini-2.0-flash",
+            "model": "gemini-3.1-flash",
         }
     elif settings.groq_api_key and "groq" not in exclude_slugs:
         config = {

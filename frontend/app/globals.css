@@ -44,6 +44,7 @@
 
 /* -- Light theme — matches the reference design ----------─ */
 :root {
+  color-scheme: light;
   --background: #f0f1f3;
   --foreground: #111111;
   --card: #ffffff;
@@ -75,6 +76,7 @@
 
 /* Dark mode — deep black/white */
 .dark {
+  color-scheme: dark;
   --background: #0a0a0a;
   --foreground: #fafafa;
   --card: #141414;
@@ -106,16 +108,29 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    /* Smooth theme transitions */
-    transition: background-color 0.3s ease-in-out, border-color 0.3s ease-in-out, color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
   }
   body {
-    @apply bg-background text-foreground antialiased transition-colors duration-500;
+    @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     letter-spacing: -0.01em;
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
   }
+  
+  /* Synchronized theme transitions for all major containers */
+  .card, .bg-card, .border, .bg-background, .bg-secondary, .text-foreground, .text-muted-foreground {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, opacity 0.3s ease;
+  }
+
   html {
     @apply font-sans;
+  }
+  
+  /* GPU acceleration utility */
+  .gpu {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+    will-change: transform, opacity;
   }
   /* Remove browser autofill blue and match theme */
   input:-webkit-autofill,

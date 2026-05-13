@@ -27,24 +27,60 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { HistoryClient } from "@/app/history/history-client";
-import { KnowledgeClient } from "@/app/knowledge/knowledge-client";
-import { ChatPanel } from "@/components/chat-panel";
-import { FocusTimer } from "@/components/focus-timer";
-import { MasteryRing } from "@/components/mastery-ring";
-import { Scratchpad } from "@/components/scratchpad";
-import { ShareModal } from "@/components/share-modal";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { ConnectClient } from "./connect/connect-client";
-import { FlashcardsClient } from "./flashcards/flashcards-client";
-import { MindMapClient } from "./mindmap/mindmap-client";
-import { QuizClient } from "./quiz/quiz-client";
-import { SummaryClient } from "./summary/summary-client";
+import { api, Assignment } from "@/lib/api";
+
+// Dynamic Imports for heavy tool components
+const ChatPanel = dynamic(() => import("@/components/chat-panel").then(mod => mod.ChatPanel), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const MindMapClient = dynamic(() => import("./mindmap/mindmap-client").then(mod => mod.MindMapClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const FlashcardsClient = dynamic(() => import("./flashcards/flashcards-client").then(mod => mod.FlashcardsClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const QuizClient = dynamic(() => import("./quiz/quiz-client").then(mod => mod.QuizClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const KnowledgeClient = dynamic(() => import("@/app/knowledge/knowledge-client").then(mod => mod.KnowledgeClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const HistoryClient = dynamic(() => import("@/app/history/history-client").then(mod => mod.HistoryClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const SummaryClient = dynamic(() => import("./summary/summary-client").then(mod => mod.SummaryClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const ConnectClient = dynamic(() => import("./connect/connect-client").then(mod => mod.ConnectClient), {
+  loading: () => <div className="h-full flex items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>,
+  ssr: false
+});
+
+const FocusTimer = dynamic(() => import("@/components/focus-timer").then(mod => mod.FocusTimer), { ssr: false });
+const MasteryRing = dynamic(() => import("@/components/mastery-ring").then(mod => mod.MasteryRing), { ssr: false });
+const Scratchpad = dynamic(() => import("@/components/scratchpad").then(mod => mod.Scratchpad), { ssr: false });
+const ShareModal = dynamic(() => import("@/components/share-modal").then(mod => mod.ShareModal), { ssr: false });
+const ThemeToggle = dynamic(() => import("@/components/theme-toggle").then(mod => mod.ThemeToggle), { ssr: false });
+const Button = dynamic(() => import("@/components/ui/button").then(mod => mod.Button), { ssr: false });
 
 interface Notebook {
   id: string;
@@ -82,7 +118,6 @@ const STATUS_CONFIG: Record<
   failed: { icon: XCircle, color: "text-[#ef4444]", label: "Failed" },
 };
 
-/* Studio tools */
 /* Studio tools */
 interface StudioTool {
   icon: any;
@@ -161,7 +196,11 @@ export function NotebookClient({
   userId: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const assignmentId = searchParams.get("assignment");
+
   const [sources, setSources] = useState<Source[]>([]);
+  const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<"google" | "groq">(
@@ -210,8 +249,22 @@ export function NotebookClient({
     }
   }, [notebook.id]);
 
+  const loadAssignment = useCallback(async () => {
+    if (!assignmentId) return;
+    try {
+      const data = await api.assignments.get(assignmentId);
+      setAssignment(data);
+      // Auto-switch to the relevant tool
+      if (data.type === "quiz") setActiveView("quiz");
+      if (data.type === "flashcard") setActiveView("flashcards");
+    } catch (err) {
+      toast.error("Failed to load assignment details");
+    }
+  }, [assignmentId]);
+
   useEffect(() => {
     loadSources();
+    loadAssignment();
     const channel = supabase
       .channel(`sources_realtime:${notebook.id}`)
       .on(
@@ -222,7 +275,7 @@ export function NotebookClient({
           table: "sources",
           filter: `notebook_id=eq.${notebook.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.eventType === "UPDATE") {
             setSources((prev) =>
               prev.map((s) =>
@@ -240,7 +293,7 @@ export function NotebookClient({
           }
         },
       )
-      .subscribe((status) => {
+      .subscribe((status: any) => {
         if (status === "SUBSCRIBED") {
           console.log("Realtime subscription active for notebook:", notebook.id);
         }
@@ -257,7 +310,7 @@ export function NotebookClient({
           table: "notebooks",
           filter: `id=eq.${notebook.id}`,
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.new.mastery_score !== undefined) {
             setMasteryScore(payload.new.mastery_score);
           }
@@ -373,7 +426,7 @@ export function NotebookClient({
     handleUpload(e.dataTransfer.files);
   }
 
-  const hasReady = sources.some((s) => s.status === "ready");
+  const hasReady = useMemo(() => sources.some((s) => s.status === "ready"), [sources]);
 
   return (
     <div className="h-screen flex flex-col bg-background p-3 gap-3 overflow-hidden">
@@ -736,6 +789,7 @@ export function NotebookClient({
                 userId={userId}
                 isEmbedded
                 examDate={examDate}
+                assignmentId={assignment?.id}
               />
             )}
             {activeView === "quiz" && (
@@ -744,6 +798,11 @@ export function NotebookClient({
                 userId={userId}
                 isEmbedded
                 examDate={examDate}
+                assignmentId={assignment?.id}
+                isProctored={assignment?.is_proctored}
+                timeLimitMins={assignment?.time_limit_mins}
+                requireFullscreen={assignment?.require_fullscreen}
+                submissionId={assignment?.my_submission?.id}
               />
             )}
             {activeView === "summary" && (

@@ -87,43 +87,59 @@ async def update_knowledge(
     Returns:
         Updated KnowledgeNode objects.
     """
-    from qdrant_client import AsyncQdrantClient
-    from qdrant_client.models import Distance, PointStruct, VectorParams
+    import asyncio
+    from qdrant_client.models import PointStruct
+    from graspmind.rag.vector_store import get_qdrant_client, ensure_collection
 
     settings = get_settings()
-    client = AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key or None)
-
+    client = get_qdrant_client(settings)
+    
+    # Use cached ensure_collection for knowledge as well (optional, but good for consistency)
+    # Actually, knowledge uses a different collection naming pattern here
     collection_name = f"knowledge_{user_id[:8]}"
-
-    # Ensure collection exists
-    collections = (await client.get_collections()).collections
-    if not any(c.name == collection_name for c in collections):
-        await client.create_collection(
-            collection_name=collection_name,
-            vectors_config=VectorParams(
-                size=settings.embedding_dimensions,
-                distance=Distance.COSINE,
-            ),
-        )
+    
+    # We'll use a local check for now, but better to unify with vector_store.py naming
+    from graspmind.rag.vector_store import _verified_collections
+    if collection_name not in _verified_collections:
+        collections = (await client.get_collections()).collections
+        if not any(c.name == collection_name for c in collections):
+            from qdrant_client.models import Distance, VectorParams
+            await client.create_collection(
+                collection_name=collection_name,
+                vectors_config=VectorParams(
+                    size=settings.embedding_dimensions,
+                    distance=Distance.COSINE,
+                ),
+            )
+        _verified_collections.add(collection_name)
 
     # Embed concepts
     embeddings = await embed_texts(concepts, task="RETRIEVAL_DOCUMENT")
+
+    # ── Parallel Scroll for existing nodes ───────────────────
+    async def fetch_existing(concept: str):
+        try:
+            res = await client.scroll(
+                collection_name=collection_name,
+                scroll_filter={
+                    "must": [{"key": "concept", "match": {"value": concept.lower()}}]
+                },
+                limit=1,
+                with_payload=True,
+            )
+            return concept, res[0]
+        except Exception:
+            return concept, []
+
+    existing_results_raw = await asyncio.gather(*[fetch_existing(c) for c in concepts])
+    existing_map = {c: res for c, res in existing_results_raw}
 
     nodes: list[KnowledgeNode] = []
     points: list[PointStruct] = []
 
     for _i, (concept, is_correct, embedding) in enumerate(zip(concepts, correct, embeddings, strict=False)):
-        # Try to get existing node
-        existing_result = await client.scroll(
-            collection_name=collection_name,
-            scroll_filter={
-                "must": [{"key": "concept", "match": {"value": concept.lower()}}]
-            },
-            limit=1,
-            with_payload=True,
-        )
-        existing = existing_result[0]
-
+        existing = existing_map.get(concept, [])
+        
         times_asked = 1
         times_correct = 1 if is_correct else 0
 
@@ -143,7 +159,10 @@ async def update_knowledge(
         )
         nodes.append(node)
 
-        point_id = abs(hash(f"{user_id}:{concept.lower()}")) % (2**63)
+        # Deterministic point ID to avoid duplicates
+        import hashlib
+        point_id = int(hashlib.md5(f"{user_id}:{concept.lower()}".encode()).hexdigest(), 16) % (2**63)
+        
         points.append(PointStruct(
             id=point_id,
             vector=embedding,
@@ -162,6 +181,7 @@ async def update_knowledge(
         logger.info("Updated %d knowledge nodes for user %s", len(points), user_id[:8])
 
     return nodes
+
 
 
 async def get_weak_areas(

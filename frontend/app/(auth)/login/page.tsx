@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2, Lock, Mail } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -228,7 +229,14 @@ export default function LoginPage() {
           <div className="flex flex-col p-8 lg:p-12">
             {/* Logo */}
             <div className="flex items-center gap-2.5 mb-auto">
-              <img src="/grasp.svg" alt="GraspMind AI Logo" className="w-8 h-8 object-contain dark:invert" />
+              <Image 
+                src="/grasp.svg" 
+                alt="GraspMind AI Logo" 
+                width={32} 
+                height={32}
+                priority
+                className="object-contain dark:invert" 
+              />
               <div>
                 <p className="text-sm font-semibold text-[#111] leading-none">
                   GraspMind AI
