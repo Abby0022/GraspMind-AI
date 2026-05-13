@@ -1,128 +1,257 @@
-# 🧠 GraspMind AI
+# GraspMind AI
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
-[![Next.js](https://img.shields.io/badge/Frontend-Next.js-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![Supabase](https://img.shields.io/badge/Database-Supabase-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
+> **The AI-powered study platform that transforms your documents into an active learning engine.**
 
-**GraspMind AI** is an intelligent, high-density study platform designed to transform passive reading into active mastery. It leverages Retrieval-Augmented Generation (RAG) and agentic AI to help students organize, analyze, and retain information from their course materials.
+![Python 3.13+](https://img.shields.io/badge/Python-3.13+-3776AB?logo=python&logoColor=white)
+![Next.js 16](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
+![Supabase](https://img.shields.io/badge/Database-Supabase-3ECF8E?logo=supabase&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
-> **The $0/month Philosophy:** This entire stack is explicitly designed to run on the generous free tiers of Vercel, Supabase, Qdrant, and Groq/Gemini, making it enterprise-grade yet accessible to every student.
+---
+
+## What is GraspMind AI?
+
+GraspMind AI is a full-stack, AI-native study platform. Students upload PDFs, DOCX, PPTX, and notes; the platform indexes them via a multi-stage **Retrieval-Augmented Generation (RAG)** pipeline. They can then chat with their material, generate flashcards, take adaptive quizzes, build knowledge graphs, and track mastery.
+
+For educators, a **Teacher Portal** provides class management, assignment creation (with proctoring), analytics, and roster management.
+
+The entire stack runs on **free cloud tiers** (Vercel + Render + Supabase + Qdrant Cloud + Upstash Redis) with enterprise-grade security.
 
 ---
 
 ## ✨ Key Features
 
-- **📂 Agentic Notebooks:** Create dedicated spaces for subjects. Upload PDFs, DOCX, and text files.
-- **💬 Contextual Chat:** Talk to your documents. Ask complex questions and get answers grounded in your specific materials.
-- **🧠 Active Recall Engine:**
-  - **Adaptive Quizzes:** AI-generated assessments based on your notes.
-  - **Feynman Mode:** AI roleplays as a confused peer; you master the concept by explaining it.
-  - **SRS Integration:** Spaced Repetition schedules calculated around your real exam dates.
-- **🕸️ Knowledge Graph:** Visualize connections between concepts across multiple notebooks.
-- **🛡️ BYOK (Bring Your Own Key):** Connect your own LLM providers (Groq, Gemini, Ollama) for maximum privacy and cost control.
+### Students
+- **Smart Notebooks** — Organise materials by subject with colour-coded notebooks
+- **Multi-format Ingestion** — PDF, DOCX, PPTX, TXT, images — all indexed automatically
+- **RAG Chat** — Hybrid semantic + BM25 retrieval with streaming responses via WebSocket
+- **Flashcards + SRS** — AI-generated cards with the SuperMemo-2 scheduler + Cram Mode
+- **Adaptive Quizzes** — LLM-generated quizzes grounded in your own material
+- **Knowledge Graph** — Visual mind-map of concepts (`@xyflow/react`)
+- **Feynman Mode** — AI plays confused student; you explain concepts to reinforce them
+- **Mastery Tracking** — Per-concept mastery scores with progress ring
+- **Scratchpad + Focus Timer** — Persistent notes and Pomodoro timer
+- **PWA** — Installable, offline-capable
+
+### Teachers
+- **Class Management** — Create classes, generate invite codes, clone/archive courses
+- **Assignment Builder** — Read, quiz, or flashcard assignments linked to any notebook
+- **Proctored Assessments** — Full-screen enforcement + focus-loss integrity alerts
+- **Analytics Dashboard** — Per-student mastery, quiz completion, weakest concepts
+- **Staff Roles** — Add TAs with granular permission scopes
+
+### Platform-wide
+- **BYOK (Bring Your Own Key)** — 14+ LLM providers; keys encrypted with AES-256-GCM
+- **Multi-tenant RLS** — PostgreSQL Row-Level Security — data can never leak across users
+- **Redis Rate Limiting** — Atomic Lua-script limits on every endpoint
+- **Audit Logs** — All security-significant events persisted to `audit_logs`
+- **Compliance Vault** — GDPR/FERPA data export and deletion pipeline
 
 ---
 
-## 🛠️ Technical Stack
+## 🏗️ Architecture
 
-| Layer | Technology | Why? |
-|-------|------------|------|
-| **Frontend** | [Next.js 15+](https://nextjs.org/) | App Router, Server Components, and Edge performance. |
-| **Backend** | [FastAPI](https://fastapi.tiangolo.com/) | High-performance Python async API. |
-| **Database** | [Supabase](https://supabase.com/) | Postgres, Row-Level Security (RLS), and secure Auth. |
-| **Vector Store** | [Qdrant](https://qdrant.tech/) | Production-grade vector search for RAG. |
-| **AI Orchestration** | [LlamaIndex](https://www.llamaindex.ai/) | Advanced data ingestion and retrieval pipelines. |
-| **Task Queue** | [Taskiq](https://taskiq.py) + Redis | Asynchronous background processing for heavy ingestion. |
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Next.js 16 (Vercel)         FastAPI (Render)                │
+│  App Router / React 19  ◄──► RAG Pipeline                    │
+│  Tailwind v4 / Zustand   REST  Flashcards / SRS / Quiz       │
+│  Framer Motion          + WS   Memory System                 │
+│                                Taskiq Workers                 │
+│                                14+ LLM Providers (BYOK)       │
+├─────────────────┬───────────────────────┬────────────────────┤
+│  Supabase       │  Qdrant Cloud         │  Redis (Upstash)   │
+│  PostgreSQL+RLS │  Vector DB (3072-dim) │  Rate limit/Queue  │
+│  GoTrue Auth    │                       │  Session cache      │
+│  Storage (S3)   │                       │                    │
+└─────────────────┴───────────────────────┴────────────────────┘
+```
+
+### Document Ingestion Flow
+```
+Upload → Supabase Storage
+       → Taskiq worker (background)
+       → Parser (PDF/DOCX/PPTX/TXT/Image)
+       → Chunker (parent-child hierarchy)
+       → Gemini Embeddings (3072-dim)
+       → Qdrant upsert
+       → source.status = "ready"
+```
+
+### RAG Chat Flow
+```
+User message (WebSocket)
+  → Query Rewriter
+  → BM25 retriever + Qdrant dense retriever
+  → Reciprocal Rank Fusion
+  → Cross-encoder Reranker
+  → Prompt Builder (system + history + context)
+  → LLM (BYOK-resolved provider)
+  → Streaming tokens → WebSocket → UI
+```
 
 ---
 
-## 🚀 Getting Started
+## 🗂️ Repository Layout
+
+```
+GraspMind-AI/
+├── backend/                 # FastAPI Python backend (see backend/README.md)
+│   ├── src/graspmind/
+│   │   ├── api/routes/      # 16 REST route modules
+│   │   ├── api/websockets/  # Streaming chat WebSocket
+│   │   ├── rag/             # Full RAG pipeline (12 modules)
+│   │   ├── study/           # Flashcards, quizzes, SM-2 SRS
+│   │   ├── memory/          # Episodic, semantic, working memory
+│   │   ├── providers/       # LLM provider registry + BYOK resolver
+│   │   ├── security/        # Auth, RBAC, rate limiter, vault, middleware
+│   │   ├── parsers/         # PDF, DOCX, PPTX, TXT, image
+│   │   ├── workers/         # Taskiq async workers
+│   │   └── main.py          # FastAPI application factory
+│   ├── pyproject.toml
+│   └── render.yaml          # One-click Render deployment
+│
+├── frontend/                # Next.js 16 frontend (see frontend/README.md)
+│   ├── app/                 # App Router pages
+│   │   ├── (auth)/          # Login / signup
+│   │   ├── dashboard/       # Student dashboard
+│   │   ├── notebook/[id]/   # Per-notebook study interface
+│   │   ├── knowledge/       # Knowledge graph page
+│   │   ├── classes/         # Student enrollment view
+│   │   ├── teacher/         # Teacher portal
+│   │   └── settings/        # BYOK provider settings
+│   ├── components/          # Shared + role-specific components
+│   ├── lib/                 # API client, Zustand store, Supabase helpers
+│   └── next.config.ts       # Next.js + PWA + security headers
+│
+├── supabase/migrations/     # 24 ordered SQL migrations
+├── docker-compose.yml       # Local dev: Redis + Qdrant
+└── .env.example             # Environment variable template
+```
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
+- Python ≥ 3.13 + [`uv`](https://docs.astral.sh/uv/)
+- Node.js ≥ 20 + npm
+- Docker (for local Redis + Qdrant)
+- [Supabase](https://supabase.com) project (free tier)
+- [Google AI Studio](https://aistudio.google.com) API key (free embeddings)
+- [Groq](https://console.groq.com) API key (free LLM inference)
 
-- **Docker Desktop** (for Redis & Qdrant)
-- **Node.js 24+**
-- **Python 3.13+**
-- **uv** — Fast Python package manager ([Installation Guide](https://astral.sh/uv/install.sh))
-
-### 1. Repository Setup
-
+### 1. Clone & Configure
 ```bash
-git clone https://github.com/Abby0022/GraspMind-AI.git
+git clone https://github.com/YOUR_USERNAME/GraspMind-AI.git
 cd GraspMind-AI
-cp .env.example .env
+cp .env.example backend/.env
 ```
 
-### 2. Infrastructure
-
-```bash
-docker-compose up -d  # Launches local Redis and Qdrant
+Edit `backend/.env` — minimum required vars:
+```
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_ANON_KEY=eyJ...
+SUPABASE_SERVICE_KEY=eyJ...
+GOOGLE_API_KEY=AIza...
+GROQ_API_KEY=gsk_...
+JWT_SECRET=<openssl rand -hex 32>
 ```
 
-### 3. Backend Implementation
+Create `frontend/.env.local`:
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+```
 
+### 2. Start Infrastructure
 ```bash
-cd backend
-uv sync
+docker-compose up -d        # Redis :6379 + Qdrant :6333
+```
+
+### 3. Apply Database Migrations
+Run each file in `supabase/migrations/` (001 → 024) in the Supabase SQL Editor.
+
+### 4. Start the Backend
+```bash
+cd backend && uv sync
 uv run uvicorn graspmind.main:app --reload --port 8000
 ```
 
-### 4. Frontend Implementation
-
+In a second terminal (background workers):
 ```bash
-cd frontend
-npm install
-npm run dev
+cd backend
+uv run taskiq worker graspmind.workers.broker:broker \
+  graspmind.workers.ingestion \
+  graspmind.workers.episodic_worker \
+  graspmind.workers.feynman_worker
 ```
 
----
+### 5. Start the Frontend
+```bash
+cd frontend && npm install && npm run dev
+```
 
-## ⚙️ Configuration
-
-GraspMind AI requires several environment variables to be set in your `.env` file:
-
-| Variable | Description |
-|----------|-------------|
-| `SUPABASE_URL` | Your Supabase project URL. |
-| `SUPABASE_ANON_KEY` | Public key for frontend auth. |
-| `GROQ_API_KEY` | (Optional) For high-speed Llama 3.3 inference. |
-| `GOOGLE_API_KEY` | (Required) For Gemini 1.5 Flash embeddings. |
-| `JWT_SECRET` | 256-bit secret for backend authentication. |
+Open **http://localhost:3000** 🎉
 
 ---
 
-## 🛡️ Security & Privacy
+## ⚙️ Tech Stack Summary
 
-- **Row-Level Security (RLS):** All data access is enforced at the database level. No user can ever see another's notebooks.
-- **Data Isolation:** Vector embeddings are tagged with user IDs to prevent cross-tenant information leakage.
-- **No Training:** We explicitly use providers and models with zero-retention policies.
-
----
-
-## 🗺️ Roadmap
-
-## ⚙️ Configuration Essentials
-
-| Variable | Usage |
-|----------|-------|
-| `SUPABASE_URL` | Auth and metadata persistence. |
-| `GOOGLE_API_KEY` | Default embedding and fallback inference. |
-| `GROQ_API_KEY` | High-speed inference (Llama 3.3). |
-| `QDRANT_URL` | Vector storage endpoint. |
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS v4, Zustand, Framer Motion |
+| Backend | FastAPI, Python 3.13, Uvicorn, Pydantic v2 |
+| Database | Supabase (PostgreSQL + RLS + GoTrue Auth + Storage) |
+| Vector DB | Qdrant (3072-dim Gemini embeddings) |
+| RAG | LlamaIndex Core, BM25, Hybrid Retrieval, Cross-encoder Reranking |
+| LLM | 14 providers: Groq, Google Gemini, OpenAI, Anthropic, Mistral, DeepSeek, xAI, Cohere, Perplexity, Together, Fireworks, Cerebras, OpenRouter, Ollama |
+| Cache/Queue | Redis + Taskiq (async background workers) |
+| Security | HttpOnly cookies, AES-256-GCM vault, Redis rate limiting, RLS, RBAC, audit logs |
+| Deployment | Vercel (frontend) + Render (backend + worker + Redis) |
 
 ---
 
-## 🛡️ Security & Ethics
-- **RLS Enforced**: All Supabase queries use JWT-based Row-Level Security.
-- **No Training**: We explicitly use enterprise APIs with zero-retention policies.
-- **Open Source**: Auditable code for students who care about their data privacy.
+## 🔐 Security Highlights
+
+1. **HttpOnly Cookies** — Auth tokens never touch JavaScript; set by the FastAPI backend
+2. **Server-side Role Assignment** — Teacher role validated via `hmac.compare_digest()` on a secret invite code; user input cannot influence DB role
+3. **Row-Level Security** — Every PostgreSQL table has RLS policies — zero cross-tenant data leakage
+4. **AES-256-GCM Vault** — BYOK provider keys encrypted before storage; vault master key never in DB
+5. **Redis Rate Limiting** — Atomic Lua scripts on signup (5/10min), login (20/min), chat (60/min), upload (10/min)
+6. **Security Headers** — HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 
 ---
 
-## 🤝 Contributing
-GraspMind is an open-source project. We welcome contributions to our RAG pipeline, UI components, and new provider integrations.
+## 🚢 Deployment
+
+### Frontend (Vercel)
+1. Import repo → set **root directory** to `frontend`
+2. Add env vars (`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SUPABASE_*`)
+3. Deploy
+
+### Backend (Render)
+The root `render.yaml` defines three services: API, Worker, Redis.  
+Connect your repo in Render → "Use render.yaml" → fill in the `graspmind-secrets` env group.
+
+See [`backend/README.md`](backend/README.md) for full backend docs.
 
 ---
 
-*GraspMind AI — Empowering students through agentic active learning.*
+## 🗄️ Database Migrations (24 total)
+
+| Range | Area |
+|---|---|
+| 001–009 | Core schema: users, notebooks, sources, sessions, quizzes, flashcards, memory, storage |
+| 010–012 | Teacher portal: classes, members, assignments, RLS fixes |
+| 013–014 | Performance indexes, security audit tables |
+| 015–019 | BYOK vault, notifications, RBAC, key storage |
+| 020–024 | Sections hierarchy, delegated security, proctoring, compliance vault, audit logs |
+
+---
+
+## 📄 License
+
+MIT © 2026 GraspMind AI Inc. Built for students.
